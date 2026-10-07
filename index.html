@@ -2120,26 +2120,33 @@ async function drain(enc,max){let q=enc.encodeQueueSize,t0=performance.now();whi
 function seekTo(el,t){return new Promise(res=>{t=clamp(t,0,Math.max(0,(el.duration||0)-.001));if(Math.abs(el.currentTime-t)<.0005&&el.readyState>=2&&!el.seeking){res();return}
   let to;const done=()=>{clearTimeout(to);el.removeEventListener('seeked',done);res()};el.addEventListener('seeked',done);to=setTimeout(done,2500);el.currentTime=t})}
 let MP4BOXP=null;
-function loadMp4box(){if(window.MP4Box&&window.DataStream)return Promise.resolve(true);if(MP4BOXP)return MP4BOXP;MP4BOXP=new Promise(res=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js';sc.onload=()=>res(!!(window.MP4Box&&window.DataStream));sc.onerror=()=>{MP4BOXP=null;res(false)};document.head.appendChild(sc);setTimeout(()=>res(false),12000)});return MP4BOXP}
+function loadScript(src,ms){return new Promise(res=>{const sc=document.createElement('script');sc.src=src;let d=false;const fin=v=>{if(d)return;d=true;res(v)};sc.onload=()=>fin(true);sc.onerror=()=>{sc.remove();fin(false)};document.head.appendChild(sc);setTimeout(()=>fin(false),ms)})}
+function loadMp4box(){if(window.MP4Box&&window.DataStream)return Promise.resolve(true);if(MP4BOXP)return MP4BOXP;MP4BOXP=(async()=>{for(const u of ['mp4box.all.js','https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js']){await loadScript(u,u.startsWith('http')?12000:8000);if(window.MP4Box&&window.DataStream)return true}MP4BOXP=null;return false})();return MP4BOXP}
+async function readBoxes(F){const out={};let pos=0,n=0;const N=F.size;while(pos+8<=N&&n++<4096){const h=new DataView(await F.slice(pos,Math.min(N,pos+16)).arrayBuffer());if(h.byteLength<8)break;let size=h.getUint32(0);const type=String.fromCharCode(h.getUint8(4),h.getUint8(5),h.getUint8(6),h.getUint8(7));if(size===1){if(h.byteLength<16)break;size=h.getUint32(8)*4294967296+h.getUint32(12)}else if(size===0)size=N-pos;if(size<8)break;if(!out[type])out[type]={pos,size};pos+=size}return out}
+function codecCands(tr,entry){const c=[tr.codec];const BP=window.BoxParser||MP4Box.BoxParser||{};try{if(entry&&entry.hvcC&&!/^(hvc1|hev1)/.test(tr.codec)&&BP.hvc1SampleEntry){const g=BP.hvc1SampleEntry.prototype.getCodec.call({type:'hvc1',hvcC:entry.hvcC});c.push(g,g.replace(/^hvc1/,'hev1'))}}catch(e){}
+  try{if(entry&&entry.avcC&&!/^avc/.test(tr.codec)&&BP.avc1SampleEntry){c.push(BP.avc1SampleEntry.prototype.getCodec.call({type:'avc1',avcC:entry.avcC}))}}catch(e){}return [...new Set(c.filter(Boolean))]}
 async function demux(m){
   if(m.dmx!==undefined)return m.dmx;m.dmx=null;
   if(!('VideoDecoder' in window)||!('EncodedVideoChunk' in window)||!m.file)return null;
   if(!/mp4|quicktime|m4v|3gpp/i.test(m.file.type||'')&&!/\.(mp4|mov|m4v|3gp)$/i.test(m.name||''))return null;
   if(!await loadMp4box())return null;
   try{
-    const buf=await m.file.arrayBuffer();buf.fileStart=0;
-    const mf=MP4Box.createFile();let info=null;const samples=[];let perr=null;
-    mf.onError=e=>{perr=e};mf.onReady=inf=>{info=inf;const tr=inf.videoTracks&&inf.videoTracks[0];if(tr){mf.setExtractionOptions(tr.id,null,{nbSamples:1e9});mf.start()}};
-    mf.onSamples=(id,u,ss)=>{for(const x of ss)samples.push(x)};
-    mf.appendBuffer(buf);mf.flush();
-    if(perr||!info||!samples.length)return null;
-    const tr=info.videoTracks[0],trak=mf.getTrackById(tr.id);let desc;
-    for(const e of trak.mdia.minf.stbl.stsd.entries){const bx=e.avcC||e.hvcC||e.vpcC||e.av1C;if(bx){const ds=new DataStream(undefined,0,DataStream.BIG_ENDIAN);bx.write(ds);desc=new Uint8Array(ds.buffer,8);break}}
-    const cfg={codec:tr.codec,codedWidth:(tr.video&&tr.video.width)||tr.track_width,codedHeight:(tr.video&&tr.video.height)||tr.track_height};if(desc)cfg.description=desc;
-    let sup;try{sup=await VideoDecoder.isConfigSupported(cfg)}catch(e){sup={supported:false}}if(!sup.supported)return null;
+    const F=m.file,bx=await readBoxes(F),lazy=!!(bx.moov&&!bx.moof&&bx.moov.size<256e6);
+    const mf=MP4Box.createFile();let info=null,perr=null;const samples=[];mf.onError=e=>{perr=e};
+    if(lazy){mf.onReady=inf=>{info=inf};const parts=[];if(bx.ftyp)parts.push(await F.slice(bx.ftyp.pos,bx.ftyp.pos+bx.ftyp.size).arrayBuffer());parts.push(await F.slice(bx.moov.pos,bx.moov.pos+bx.moov.size).arrayBuffer());
+      const u=new Uint8Array(parts.reduce((a,b)=>a+b.byteLength,0));let o=0;for(const q of parts){u.set(new Uint8Array(q),o);o+=q.byteLength}const ab=u.buffer;ab.fileStart=0;mf.appendBuffer(ab);mf.flush()}
+    else{if(F.size>600e6)return null;mf.onReady=inf=>{info=inf;const tr=inf.videoTracks&&inf.videoTracks[0];if(tr){mf.setExtractionOptions(tr.id,null,{nbSamples:1e9});mf.start()}};mf.onSamples=(id,u,ss)=>{for(const x of ss)samples.push(x)};const buf=await F.arrayBuffer();buf.fileStart=0;mf.appendBuffer(buf);mf.flush()}
+    if(perr||!info||!info.videoTracks||!info.videoTracks.length)return null;
+    const tr=info.videoTracks[0],trak=mf.getTrackById(tr.id),src=lazy?(trak.samples||[]):samples;if(!src.length)return null;
+    const ents=trak.mdia.minf.stbl.stsd.entries;let desc,entry=ents[0];
+    for(const e of ents){const b=e.avcC||e.hvcC||e.vpcC||e.av1C;if(b){entry=e;const ds=new DataStream(undefined,0,DataStream.BIG_ENDIAN);b.write(ds);desc=new Uint8Array(ds.buffer,8);break}}
+    const W=(tr.video&&tr.video.width)||tr.track_width,H=(tr.video&&tr.video.height)||tr.track_height;let cfg=null;
+    for(const codec of codecCands(tr,entry)){const c={codec,codedWidth:W,codedHeight:H};if(desc)c.description=desc;let ok=false;try{ok=(await VideoDecoder.isConfigSupported(c)).supported}catch(e){}if(ok){cfg=c;break}}
+    if(!cfg)return null;
     const mx=tr.matrix||[65536,0,0,0,65536,0,0,0,1073741824];let rot=Math.round(Math.atan2(mx[1],mx[0])*180/Math.PI);rot=((Math.round(rot/90)*90)%360+360)%360;
-    const list=samples.map(x=>({t:x.cts/x.timescale,d:x.duration/x.timescale,key:!!x.is_sync,data:x.data}));const minT=Math.min(...list.map(x=>x.t));list.forEach(x=>x.t-=minT);
-    m.dmx={cfg,list,rot};
+    const list=src.map(x=>({t:x.cts/x.timescale,d:x.duration/x.timescale,key:!!x.is_sync,off:x.offset,size:x.size,data:lazy?null:x.data}));const minT=Math.min(...list.map(x=>x.t));list.forEach(x=>x.t-=minT);
+    if(lazy&&list.some(x=>!(x.size>0)||!(x.off>=0)||x.off+x.size>F.size))return null;
+    m.dmx={cfg,list,rot,lazy};
   }catch(e){console.warn('demux',e);m.dmx=null}
   return m.dmx;
 }
@@ -2170,7 +2177,8 @@ async function exportFastInner(audio,vc,ac,onProg){
       let k0=0;for(let q=0;q<L.length;q++){if(L[q].key){if(L[q].t<=st0+1e-3)k0=q;else break}}
       const pend=[];let decErr=null,fed=k0,doneFeeding=false,flushed=false;
       const dec=new VideoDecoder({output:fr=>pend.push(fr),error:e=>{decErr=e}});OPEN_ENC.add(dec);dec.configure(dm.cfg);
-      const feed=()=>{while(fed<L.length&&dec.decodeQueueSize<8&&pend.length<6){const x=L[fed];if(x.key&&x.t>stEnd)return true;dec.decode(new EncodedVideoChunk({type:x.key?'key':'delta',timestamp:Math.round(x.t*1e6),duration:Math.max(1,Math.round(x.d*1e6)),data:x.data}));fed++}return fed>=L.length||(L[fed].key&&L[fed].t>stEnd)};
+      const fill=async i=>{const e=Math.min(L.length,i+48);let a=L[i].off,b=L[i].off+L[i].size,j=i+1;for(;j<e;j++){const na=Math.min(a,L[j].off),nb=Math.max(b,L[j].off+L[j].size);if(nb-na>48e6)break;a=na;b=nb}const ab=await m.file.slice(a,b).arrayBuffer();for(let q=i;q<j;q++){if(!L[q].data)L[q].data=new Uint8Array(ab,L[q].off-a,L[q].size)}};
+      const feed=async()=>{while(fed<L.length&&dec.decodeQueueSize<8&&pend.length<6){const x=L[fed];if(x.key&&x.t>stEnd)return true;if(!x.data)await fill(fed);if(dec.state==='closed'||X.cancel)return true;dec.decode(new EncodedVideoChunk({type:x.key?'key':'delta',timestamp:Math.round(x.t*1e6),duration:Math.max(1,Math.round(x.d*1e6)),data:x.data}));if(dm.lazy)x.data=null;fed++}return fed>=L.length||(L[fed].key&&L[fed].t>stEnd)};
       const waitOut=()=>new Promise(r=>{let d=false;const fin=()=>{if(d)return;d=true;try{dec.removeEventListener('dequeue',fin)}catch(e){}r()};try{dec.addEventListener('dequeue',fin)}catch(e){}setTimeout(fin,6)});
       const lastTs=()=>pend.length?pend[pend.length-1].timestamp/1e6:-1;
       const dropOld=stt=>{while(pend.length>1&&pend[1].timestamp/1e6<=stt+.5/FPS){pend.shift().close()}};
@@ -2179,19 +2187,19 @@ async function exportFastInner(audio,vc,ac,onProg){
           if(X.cancel)throw 'cancel';if(decErr)throw decErr;
           const stt=s.it.in+(f/FPS-s.t0);let guard=0;
           while(!flushed){dropOld(stt);if(lastTs()>=stt-1e-4&&pend.length)break;
-            if(!doneFeeding)doneFeeding=feed();
+            if(!doneFeeding)doneFeeding=await feed();
             if(doneFeeding&&dec.decodeQueueSize===0){await dec.flush();flushed=true;dropOld(stt);break}
             await waitOut();if(decErr)throw decErr;if(++guard>6000)throw new Error('El decodificador no respondió.')}
           if(pend.length){m.vframe=pend[0]}
           if(ovNeeded(f/FPS))await prepOverlay(f/FPS);
           emit();if(f%10===0){onProg(f/nF);await drain(venc,6)}else if(venc.encodeQueueSize>10)await drain(venc,6);
-          if(!doneFeeding)doneFeeding=feed();
+          if(!doneFeeding)doneFeeding=await feed();
         }
       }finally{
         if(m.vkeep){try{m.vkeep.close()}catch(e){}m.vkeep=null}
         if(pend.length){try{m.vkeep=pend[0].clone()}catch(e){}}
         pend.forEach(fr=>{try{fr.close()}catch(e){}});m.vframe=null;m.rotFrame=null;
-        try{if(dec.state!=='closed')dec.close()}catch(e){}OPEN_ENC.delete(dec);
+        try{if(dec.state!=='closed')dec.close()}catch(e){}OPEN_ENC.delete(dec);if(dm.lazy)L.forEach(x=>{x.data=null});
       }
       if(X.err)throw X.err;continue}}
     if(m.kind==='video'){
@@ -2204,17 +2212,24 @@ async function exportFastInner(audio,vc,ac,onProg){
           let done=false,dog=null;const end=v=>{if(done)return;done=true;clearTimeout(dog);el.removeEventListener('ended',onEnded);el.pause();el.playbackRate=1;res(v)};
           const arm=()=>{clearTimeout(dog);dog=setTimeout(()=>end(false),2500)};
           const onEnded=()=>end(true);el.addEventListener('ended',onEnded);
+          let lastMT=-1,minGap=1;
           const onFrame=async(now,md)=>{
             if(done)return;arm();if(X.cancel){end(true);return}
             const local=md.mediaTime-s.it.in;
-            let held=false;while(f<fEnd&&(f/FPS-s.t0)<=local+.5/FPS){if(ovNeeded(f/FPS)){if(!el.paused){el.pause();held=true}await prepOverlay(f/FPS);if(done)return}emit()}
+            let held=false;
+            const gap=lastMT>=0?md.mediaTime-lastMT:0;if(gap>.004&&gap<minGap)minGap=gap;
+            if(lastMT>=0&&minGap<.1&&gap>minGap*1.6&&f<fEnd&&(f/FPS-s.t0)<local-minGap*.5){
+              el.pause();held=true;X.recovered=(X.recovered||0)+1;
+              while(f<fEnd&&(f/FPS-s.t0)<local-minGap*.5){await seekTo(el,s.it.in+(f/FPS-s.t0));if(done||X.cancel){end(true);return}arm();await prepOverlay(f/FPS);emit()}
+              await seekTo(el,md.mediaTime);if(done)return;arm()}
+            lastMT=md.mediaTime;while(f<fEnd&&(f/FPS-s.t0)<=local+.5/FPS){if(ovNeeded(f/FPS)){if(!el.paused){el.pause();held=true}await prepOverlay(f/FPS);if(done)return}emit()}
             if(held&&f<fEnd&&!done)el.play().catch(()=>end(false));
             onProg(f/nF);
             if(f>=fEnd){end(true);return}
             if(venc.encodeQueueSize>6){el.pause();try{await drain(venc,2)}catch(e){end(false);return}if(done)return;el.play().catch(()=>end(false))}
             el.requestVideoFrameCallback(onFrame);
           };
-          el.playbackRate=(FPS>30||(el.videoWidth*el.videoHeight>2.2e6))?1:1.5;el.requestVideoFrameCallback(onFrame);arm();el.play().catch(()=>end(false));
+          el.playbackRate=1;el.requestVideoFrameCallback(onFrame);arm();el.play().catch(()=>end(false));
         });
         if(X.cancel)throw 'cancel';
         if(!ok)await seekMode();
@@ -2253,10 +2268,10 @@ async function runExport(){
     const audio=await mixAudio();if(X.cancel)throw 'cancel';
     const vc=await pickVideoCfg(),ac=audio?await pickAudioCfg():null;
     if(vc&&(!audio||ac)){X.fast=true;ph.textContent='Codificando el MP4 en modo rápido…';
-      try{X.decoded=0;blob=await exportFast(audio,vc,ac,onProg)}catch(e){if(!(e&&e.stall))throw e;ph.textContent='El codificador de la tarjeta de video no respondió; sigo con el de software…';X.err=null;const sw={...vc,config:{...vc.config,hardwareAcceleration:'prefer-software'}};let ok=false;try{ok=(await VideoEncoder.isConfigSupported(sw.config)).supported}catch(x){}
+      try{X.decoded=0;X.recovered=0;blob=await exportFast(audio,vc,ac,onProg)}catch(e){if(!(e&&e.stall))throw e;ph.textContent='El codificador de la tarjeta de video no respondió; sigo con el de software…';X.err=null;const sw={...vc,config:{...vc.config,hardwareAcceleration:'prefer-software'}};let ok=false;try{ok=(await VideoEncoder.isConfigSupported(sw.config)).supported}catch(x){}
         blob=await exportFast(audio,ok?sw:vc,ac,onProg)}ext='mp4';how=(vc.kind==='avc'?'H.264':'VP9')+(audio?(ac.kind==='aac'?' + AAC':' + Opus'):'')}
     else{ph.textContent='Grabando en tiempo real (tu navegador no tiene el codificador rápido)…';const r=await exportRealtime(audio,onProg);blob=r.blob;ext=r.ext;how=ext==='mp4'?'MP4':'WebM'}
-    LAST={blob,ext};window.__lastExport=LAST;window.__lastDecoded=X.decoded||0;
+    LAST={blob,ext};window.__lastExport=LAST;window.__lastDecoded=X.decoded||0;window.__lastRecovered=X.recovered||0;
     const secs=(performance.now()-t0)/1000;const v=$('#mVideo');if(v.dataset.url)URL.revokeObjectURL(v.dataset.url);v.dataset.url=URL.createObjectURL(blob);v.src=v.dataset.url;
     $('#mInfo').textContent=`${ext.toUpperCase()} · ${how} · ${(blob.size/1048576).toFixed(1)} MB · ${fmtS(TOTAL)}`;$('#mTime').textContent=`listo en ${secs.toFixed(1)} s`;
     $('#mSave').textContent='Descargar '+ext.toUpperCase();$('#mSaveMsg').textContent='';
@@ -2310,7 +2325,7 @@ window.__topcut={demux,setNoDecoder:v=>{X.noDecoder=v},drawAt:t=>{const a=perfor
 <div class="done-card" id="doneCard" hidden><b><em>✓</em> Actualizada a la versión <span id="doneV"></span></b><ul id="doneNotes"></ul><button type="button" id="doneOk">Perfecto</button></div>
 <script>
 (function(){
-  var V='1.8.3',remote=null,dismissedFor=null;
+  var V='1.8.4',remote=null,dismissedFor=null;
   var top=document.querySelector('.top .meta');
   var chip=document.createElement('button');chip.type='button';chip.className='vchip';chip.textContent='v'+V;chip.title='Buscar actualizaciones';
   if(top&&top.parentNode)top.parentNode.insertBefore(chip,top.nextSibling);
