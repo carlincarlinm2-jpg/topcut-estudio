@@ -2097,7 +2097,7 @@ async function mixAudio(){
 async function pickVideoCfg(){
   if(!('VideoEncoder' in window)||!('VideoFrame' in window))return null;
   const hi=FPS>30;const c=hi?[['avc1.64002a','avc'],['avc1.4d002a','avc'],['avc1.42e02a','avc'],['vp09.00.41.08','vp9']]:[['avc1.640028','avc'],['avc1.4d0028','avc'],['avc1.42e028','avc'],['vp09.00.40.08','vp9']];
-  for(const [codec,kind] of c){const brBase={normal:8e6,alta:14e6,max:22e6}[P.canvas.br||'alta']||14e6,px=cv.width*cv.height/(1080*1920),config={codec,width:cv.width,height:cv.height,bitrate:Math.round(brBase*Math.max(.35,px)*(FPS>30?1.5:1)),framerate:FPS};if(kind==='avc')config.avc={format:'avc'};else config.latencyMode='realtime';
+  for(const [codec,kind] of c){const brBase={normal:8e6,alta:14e6,max:22e6}[P.canvas.br||'alta']||14e6,px=cv.width*cv.height/(1080*1920),config={codec,width:cv.width,height:cv.height,bitrate:Math.min(30e6,Math.round(brBase*Math.max(.35,px)*(FPS>30?1.5:1))),framerate:FPS};if(kind==='avc')config.avc={format:'avc'};else config.latencyMode='realtime';
     try{const r=await VideoEncoder.isConfigSupported(config);if(r.supported)return {config,kind}}catch(e){}}
   return null;
 }
@@ -2111,21 +2111,23 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 // yields without timers so background/hidden tabs are not throttled
 const yieldNow=()=>new Promise(r=>{const ch=new MessageChannel();ch.port1.onmessage=()=>{ch.port1.close();r()};ch.port2.postMessage(0)});
 function waitDequeue(enc){return new Promise(r=>{let done=false;const fin=()=>{if(done)return;done=true;try{enc.removeEventListener('dequeue',fin)}catch(e){}r()};try{enc.addEventListener('dequeue',fin)}catch(e){}setTimeout(fin,15)})}
-async function drain(enc,max){while(enc.encodeQueueSize>max){if(X.err)throw X.err;await waitDequeue(enc)}}
+async function drain(enc,max){let q=enc.encodeQueueSize,t0=performance.now();while(enc.encodeQueueSize>max){if(X.err)throw X.err;if(X.cancel)throw 'cancel';await waitDequeue(enc);const nq=enc.encodeQueueSize;if(nq<q){q=nq;t0=performance.now()}else if(performance.now()-t0>4000){const e=new Error('STALL');e.stall=true;throw e}}}
 function seekTo(el,t){return new Promise(res=>{t=clamp(t,0,Math.max(0,(el.duration||0)-.001));if(Math.abs(el.currentTime-t)<.0005&&el.readyState>=2&&!el.seeking){res();return}
   let to;const done=()=>{clearTimeout(to);el.removeEventListener('seeked',done);res()};el.addEventListener('seeked',done);to=setTimeout(done,2500);el.currentTime=t})}
-async function exportFast(audio,vc,ac,onProg){
+const OPEN_ENC=new Set();function closeEncoders(){OPEN_ENC.forEach(e=>{try{if(e.state!=='closed')e.close()}catch(x){}});OPEN_ENC.clear()}
+async function exportFast(audio,vc,ac,onProg){try{return await exportFastInner(audio,vc,ac,onProg)}finally{closeEncoders()}}
+async function exportFastInner(audio,vc,ac,onProg){
   const vt={type:'video',kind:vc.kind,w:cv.width,h:cv.height,ts:90000,samples:[],desc:null,level:40,fallback:1e6/FPS};
   const at=ac?{type:'audio',kind:ac.kind,ch:2,sr:48000,ts:48000,samples:[],desc:null,br:160000,fallback:20000}:null;
   X.err=null;
   if(ac&&audio){
-    const aenc=new AudioEncoder({output:(c,meta)=>{if(meta&&meta.decoderConfig&&meta.decoderConfig.description)at.desc=meta.decoderConfig.description;const d=new Uint8Array(c.byteLength);c.copyTo(d);at.samples.push({t:c.timestamp,d:c.duration||0,data:d})},error:e=>X.err=e});
+    const aenc=new AudioEncoder({output:(c,meta)=>{if(meta&&meta.decoderConfig&&meta.decoderConfig.description)at.desc=meta.decoderConfig.description;const d=new Uint8Array(c.byteLength);c.copyTo(d);at.samples.push({t:c.timestamp,d:c.duration||0,data:d})},error:e=>X.err=e});OPEN_ENC.add(aenc);
     aenc.configure(ac.config);const ch0=audio.getChannelData(0),ch1=audio.numberOfChannels>1?audio.getChannelData(1):ch0,N=audio.length,step=4800;
     for(let o=0;o<N;o+=step){const n=Math.min(step,N-o),buf=new Float32Array(n*2);buf.set(ch0.subarray(o,o+n),0);buf.set(ch1.subarray(o,o+n),n);
       const ad=new AudioData({format:'f32-planar',sampleRate:48000,numberOfFrames:n,numberOfChannels:2,timestamp:Math.round(o*1e6/48000),data:buf});aenc.encode(ad);ad.close();await drain(aenc,24);if(X.cancel)throw 'cancel'}
     await aenc.flush();aenc.close();if(X.err)throw X.err;
   }
-  const venc=new VideoEncoder({output:(c,meta)=>{if(meta&&meta.decoderConfig&&meta.decoderConfig.description)vt.desc=meta.decoderConfig.description;const d=new Uint8Array(c.byteLength);c.copyTo(d);vt.samples.push({t:c.timestamp,d:c.duration||0,key:c.type==='key',data:d})},error:e=>X.err=e});
+  const venc=new VideoEncoder({output:(c,meta)=>{if(meta&&meta.decoderConfig&&meta.decoderConfig.description)vt.desc=meta.decoderConfig.description;const d=new Uint8Array(c.byteLength);c.copyTo(d);vt.samples.push({t:c.timestamp,d:c.duration||0,key:c.type==='key',data:d})},error:e=>X.err=e});OPEN_ENC.add(venc);
   venc.configure(vc.config);
   const nF=Math.max(1,Math.round(TOTAL*FPS));let f=0;
   const emit=()=>{drawAt(Math.min(f/FPS,TOTAL-1e-4));const vf=new VideoFrame(cv,{timestamp:Math.round(f*1e6/FPS),duration:Math.round(1e6/FPS)});venc.encode(vf,{keyFrame:f%(FPS*2)===0});vf.close();f++};
@@ -2192,7 +2194,9 @@ async function runExport(){
   try{
     const audio=await mixAudio();if(X.cancel)throw 'cancel';
     const vc=await pickVideoCfg(),ac=audio?await pickAudioCfg():null;
-    if(vc&&(!audio||ac)){X.fast=true;ph.textContent='Codificando el MP4 en modo rápido…';blob=await exportFast(audio,vc,ac,onProg);ext='mp4';how=(vc.kind==='avc'?'H.264':'VP9')+(audio?(ac.kind==='aac'?' + AAC':' + Opus'):'')}
+    if(vc&&(!audio||ac)){X.fast=true;ph.textContent='Codificando el MP4 en modo rápido…';
+      try{blob=await exportFast(audio,vc,ac,onProg)}catch(e){if(!(e&&e.stall))throw e;ph.textContent='El codificador de la tarjeta de video no respondió; sigo con el de software…';X.err=null;const sw={...vc,config:{...vc.config,hardwareAcceleration:'prefer-software'}};let ok=false;try{ok=(await VideoEncoder.isConfigSupported(sw.config)).supported}catch(x){}
+        blob=await exportFast(audio,ok?sw:vc,ac,onProg)}ext='mp4';how=(vc.kind==='avc'?'H.264':'VP9')+(audio?(ac.kind==='aac'?' + AAC':' + Opus'):'')}
     else{ph.textContent='Grabando en tiempo real (tu navegador no tiene el codificador rápido)…';const r=await exportRealtime(audio,onProg);blob=r.blob;ext=r.ext;how=ext==='mp4'?'MP4':'WebM'}
     LAST={blob,ext};window.__lastExport=LAST;
     const secs=(performance.now()-t0)/1000;const v=$('#mVideo');if(v.dataset.url)URL.revokeObjectURL(v.dataset.url);v.dataset.url=URL.createObjectURL(blob);v.src=v.dataset.url;
@@ -2247,7 +2251,7 @@ window.__topcut={drawAt:t=>{const a=performance.now();drawAt(t);return performan
 <div class="done-card" id="doneCard" hidden><b><em>✓</em> Actualizada a la versión <span id="doneV"></span></b><ul id="doneNotes"></ul><button type="button" id="doneOk">Perfecto</button></div>
 <script>
 (function(){
-  var V='1.8.0',remote=null,dismissedFor=null;
+  var V='1.8.1',remote=null,dismissedFor=null;
   var top=document.querySelector('.top .meta');
   var chip=document.createElement('button');chip.type='button';chip.className='vchip';chip.textContent='v'+V;chip.title='Buscar actualizaciones';
   if(top&&top.parentNode)top.parentNode.insertBefore(chip,top.nextSibling);
