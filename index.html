@@ -1501,7 +1501,7 @@ async function transcribe(){
     if(wordMode){chunks.forEach(c=>{const w=(c.text||'').trim();if(!w)return;const a=c.timestamp&&c.timestamp[0]!=null?c.timestamp[0]:null,b=c.timestamp&&c.timestamp[1]!=null?c.timestamp[1]:null;if(a==null)return;words.push({w,t0:a,t1:b!=null?b:a+.3})})}
     else{chunks.forEach(c=>{const ws=(c.text||'').trim().split(/\s+/).filter(Boolean);if(!ws.length)return;const a=c.timestamp[0]||0,b=c.timestamp[1]!=null?c.timestamp[1]:a+ws.length*.35;const tot=ws.reduce((x,w)=>x+w.length+1,0);let acc=0;ws.forEach(w=>{const t0=a+(b-a)*acc/tot;acc+=w.length+1;words.push({w,t0,t1:a+(b-a)*acc/tot})})})}
     if(!words.length&&out&&out.text){const ws=out.text.trim().split(/\s+/).filter(Boolean);const d=buf.duration;ws.forEach((w,i)=>words.push({w,t0:i*d/ws.length,t1:(i+1)*d/ws.length}))}
-    words=words.filter(w=>/[\p{L}\p{N}]/u.test(w.w)).map(w=>({w:w.w.replace(/^[¿¡"«]+|["»]+$/g,''),t0:Math.max(0,w.t0),t1:Math.max(w.t0+.05,w.t1)}));
+    words=words.map(w=>({...w,w:w.w.replace(/\[[^\]]*\]|\([^)]*\)/g,'').trim()})).filter(w=>/[\p{L}\p{N}]/u.test(w.w)).map(w=>({w:w.w.replace(/^[¿¡"«]+|["»]+$/g,''),t0:Math.max(0,w.t0),t1:Math.max(w.t0+.05,w.t1)}));
     if(!words.length)throw new Error('No escuché palabras claras en tu voz.');
     P.cap.asr={voice:v.key,words:words.map(w=>({...w}))};P.script=words.map(w=>w.w).join(' ');$('#script').value=P.script;renderScriptCount();
     P.cap.words=words;P.cap.chunks=chunkWords(words);P.cap.mode='asr';P.cap.stale=false;P.cap.on=true;syncChips();renderCapStatus();renderTimeline();dirty=true;PROJ.dirty=true;
@@ -2050,7 +2050,7 @@ window.__topcut={saveNow:()=>saveProject(true),openProject,listProjects,applyFor
 <div class="done-card" id="doneCard" hidden><b><em>✓</em> Actualizada a la versión <span id="doneV"></span></b><ul id="doneNotes"></ul><button type="button" id="doneOk">Perfecto</button></div>
 <script>
 (function(){
-  var V='1.7.0',remote=null,dismissedFor=null;
+  var V='1.7.1',remote=null,dismissedFor=null;
   var top=document.querySelector('.top .meta');
   var chip=document.createElement('button');chip.type='button';chip.className='vchip';chip.textContent='v'+V;chip.title='Buscar actualizaciones';
   if(top&&top.parentNode)top.parentNode.insertBefore(chip,top.nextSibling);
