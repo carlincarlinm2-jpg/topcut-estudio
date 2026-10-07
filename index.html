@@ -1929,7 +1929,10 @@ async function pickAudioCfg(){
   return null;
 }
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-async function drain(enc,max){while(enc.encodeQueueSize>max){if(X.err)throw X.err;await sleep(3)}}
+// yields without timers so background/hidden tabs are not throttled
+const yieldNow=()=>new Promise(r=>{const ch=new MessageChannel();ch.port1.onmessage=()=>{ch.port1.close();r()};ch.port2.postMessage(0)});
+function waitDequeue(enc){return new Promise(r=>{let done=false;const fin=()=>{if(done)return;done=true;try{enc.removeEventListener('dequeue',fin)}catch(e){}r()};try{enc.addEventListener('dequeue',fin)}catch(e){}setTimeout(fin,40);let n=0;const spin=()=>{if(done)return;if(enc.encodeQueueSize===0||++n>400){fin();return}yieldNow().then(spin)};spin()})}
+async function drain(enc,max){while(enc.encodeQueueSize>max){if(X.err)throw X.err;await waitDequeue(enc)}}
 function seekTo(el,t){return new Promise(res=>{t=clamp(t,0,Math.max(0,(el.duration||0)-.001));if(Math.abs(el.currentTime-t)<.0005&&el.readyState>=2&&!el.seeking){res();return}
   let to;const done=()=>{clearTimeout(to);el.removeEventListener('seeked',done);res()};el.addEventListener('seeked',done);to=setTimeout(done,2500);el.currentTime=t})}
 async function exportFast(audio,vc,ac,onProg){
@@ -1978,7 +1981,7 @@ async function exportFast(audio,vc,ac,onProg){
         if(!ok)await seekMode();
         while(f<fEnd){await prepOverlay(f/FPS);emit()}
       }
-    } else {while(f<fEnd){if(ovNeeded(f/FPS))await prepOverlay(f/FPS);emit();if(f%10===0){await drain(venc,6);onProg(f/nF);await sleep(0)}if(X.cancel)throw 'cancel'}}
+    } else {while(f<fEnd){if(ovNeeded(f/FPS))await prepOverlay(f/FPS);emit();if(f%10===0){await drain(venc,6);onProg(f/nF);await yieldNow()}if(X.cancel)throw 'cancel'}}
     if(X.err)throw X.err;
   }
   while(f<nF){await prepOverlay(f/FPS);emit()}
@@ -2065,7 +2068,7 @@ window.__topcut={drawAt:t=>{const a=performance.now();drawAt(t);return performan
 <div class="done-card" id="doneCard" hidden><b><em>✓</em> Actualizada a la versión <span id="doneV"></span></b><ul id="doneNotes"></ul><button type="button" id="doneOk">Perfecto</button></div>
 <script>
 (function(){
-  var V='1.7.2',remote=null,dismissedFor=null;
+  var V='1.7.3',remote=null,dismissedFor=null;
   var top=document.querySelector('.top .meta');
   var chip=document.createElement('button');chip.type='button';chip.className='vchip';chip.textContent='v'+V;chip.title='Buscar actualizaciones';
   if(top&&top.parentNode)top.parentNode.insertBefore(chip,top.nextSibling);
