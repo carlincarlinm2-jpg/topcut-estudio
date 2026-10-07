@@ -977,7 +977,10 @@ const GA={key:'',c:null,n:40};
 function glyphAtlas(cw,col){const key=cw+col;if(GA.key===key)return GA;const n=GA.n,c=document.createElement('canvas');c.width=cw*n*2;c.height=cw;const x=c.getContext('2d');x.font=`${Math.round(cw*.8)}px monospace`;x.textAlign='center';x.textBaseline='middle';
   for(let i=0;i<n*2;i++){x.fillStyle=i<n?col:'#e9fff2';x.fillText(String.fromCharCode(0x30A0+((i%n)*7)%96),i*cw+cw/2,cw/2)}GA.key=key;GA.c=c;return GA}
 function drawGradient(ctx,w,h,a,b,ang){const r=ang*Math.PI/180,cx=w/2,cy=h/2,L=Math.abs(w*Math.cos(r))/2+Math.abs(h*Math.sin(r))/2;const gr=ctx.createLinearGradient(cx-Math.cos(r)*L,cy-Math.sin(r)*L,cx+Math.cos(r)*L,cy+Math.sin(r)*L);gr.addColorStop(0,a);gr.addColorStop(1,b);ctx.fillStyle=gr;ctx.fillRect(0,0,w,h)}
-function mediaSize(m){if(!m)return [0,0];if(m.kind==='video')return m.el.readyState>=2?[m.el.videoWidth,m.el.videoHeight]:[0,0];if(m.kind==='image')return m.ready?[m.el.naturalWidth,m.el.naturalHeight]:[0,0];if(m.kind==='demo')return [1080,1920];return [0,0]}
+function vsrc(m){const fr=m.vframe||(X.busy?m.vkeep:null);if(!fr)return null;const rot=(m.dmx&&m.dmx.rot)||0,w=fr.displayWidth,h=fr.displayHeight;if(!rot)return {src:fr,w,h};
+  const rw=rot%180?h:w,rh=rot%180?w:h,c=m.rotC||(m.rotC=document.createElement('canvas'));if(m.rotFrame!==fr){if(c.width!==rw||c.height!==rh){c.width=rw;c.height=rh}const x=c.getContext('2d');x.setTransform(1,0,0,1,0,0);x.translate(rw/2,rh/2);x.rotate(rot*Math.PI/180);x.drawImage(fr,-w/2,-h/2);m.rotFrame=fr}return {src:c,w:rw,h:rh}}
+function msrc(m){if(m.kind==='video'){const v=vsrc(m);if(v)return v.src}return m.el}
+function mediaSize(m){if(!m)return [0,0];if(m.kind==='video'){const v=vsrc(m);if(v)return [v.w,v.h];return m.el.readyState>=2?[m.el.videoWidth,m.el.videoHeight]:[0,0]}if(m.kind==='image')return m.ready?[m.el.naturalWidth,m.el.naturalHeight]:[0,0];if(m.kind==='demo')return [1080,1920];return [0,0]}
 function blurInto(ctx,src,sw,sh,w,h){tx.clearRect(0,0,tiny.width,tiny.height);cover(tx,src,sw,sh,tiny.width,tiny.height,1.1);ctx.save();ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(tiny,0,0,w,h);ctx.restore()}
 function drawBG(ctx,t,m,w,h){
   const B=P.bg;
@@ -985,7 +988,7 @@ function drawBG(ctx,t,m,w,h){
   else if(B.type==='gradient'){drawGradient(ctx,w,h,B.ga,B.gb,B.ang+(B.gmove?t*12:0))}
   else if(B.type==='animated'){drawAnim(ctx,B.anim,t,w,h,B.aa,B.ab,B.spd)}
   else if(B.type==='image'){const im=MEDIA.get(B.img);if(im&&im.ready){const sw=im.el.naturalWidth,sh=im.el.naturalHeight;if(B.imgBlur)blurInto(ctx,im.el,sw,sh,w,h);else cover(ctx,im.el,sw,sh,w,h,1+.04*Math.sin(t*.2))}else{ctx.fillStyle='#111';ctx.fillRect(0,0,w,h)}}
-  else {ctx.fillStyle=P.canvas.bg;ctx.fillRect(0,0,w,h);if(m){if(m.kind==='demo'){drawDemo(tx,m,t,tiny.width,tiny.height);ctx.save();ctx.imageSmoothingEnabled=true;ctx.drawImage(tiny,0,0,w,h);ctx.restore()}else{const [sw,sh]=mediaSize(m);if(sw)blurInto(ctx,m.el,sw,sh,w,h)}}}
+  else {ctx.fillStyle=P.canvas.bg;ctx.fillRect(0,0,w,h);if(m){if(m.kind==='demo'){drawDemo(tx,m,t,tiny.width,tiny.height);ctx.save();ctx.imageSmoothingEnabled=true;ctx.drawImage(tiny,0,0,w,h);ctx.restore()}else{const [sw,sh]=mediaSize(m);if(sw)blurInto(ctx,msrc(m),sw,sh,w,h)}}}
   if(B.type!=='color'&&B.dim>0){ctx.fillStyle=`rgba(0,0,0,${B.dim})`;ctx.fillRect(0,0,w,h)}
   if(B.vig){const vg=ctx.createRadialGradient(w/2,h/2,Math.min(w,h)*.35,w/2,h/2,Math.hypot(w,h)*.6);vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,.45)');ctx.fillStyle=vg;ctx.fillRect(0,0,w,h)}
 }
@@ -1011,9 +1014,10 @@ function drawMedia(ctx,m,it,local,dur,w,h,mode){
     if(mode==='fit'){const s=Math.min(w/1080,h/1920);ctx.translate((w-1080*s)/2,(h-1920*s)/2);drawDemo(ctx,m,local,1080*s,1920*s)}else drawDemo(ctx,m,local,r.w,r.h);ctx.restore();return}
   let [sw,sh]=mediaSize(m),z=1;if(!sw||!sh)return;
   if(P.fx.kb||m.kind==='image')z=1+(m.kind==='image'?.08:.05)*clamp(local/Math.max(dur,.1),0,1);
-  if(!mode||mode==='fill'){const q=placeMedia(ctx,m.el,sw,sh,w,h,z,it,itemFit(it,sw,sh,w,h));if(ctx===g)BOX.clip={x:0,y:0,w,h,dw:q.dw,dh:q.dh,id:it&&it.id};return}
-  if(mode==='fit'){const q=placeMedia(ctx,m.el,sw,sh,w,h,z,it,'contain');if(ctx===g)BOX.clip={x:0,y:0,w,h,dw:q.dw,dh:q.dh,id:it&&it.id};return}
-  const r=frameRect(m,it);ctx.save();rrect(ctx,r.x,r.y,r.w,r.h,P.frame.rad);ctx.clip();ctx.translate(r.x,r.y);const q=placeMedia(ctx,m.el,sw,sh,r.w,r.h,z,it,'cover');ctx.restore();
+  const SRC=msrc(m);
+  if(!mode||mode==='fill'){const q=placeMedia(ctx,SRC,sw,sh,w,h,z,it,itemFit(it,sw,sh,w,h));if(ctx===g)BOX.clip={x:0,y:0,w,h,dw:q.dw,dh:q.dh,id:it&&it.id};return}
+  if(mode==='fit'){const q=placeMedia(ctx,SRC,sw,sh,w,h,z,it,'contain');if(ctx===g)BOX.clip={x:0,y:0,w,h,dw:q.dw,dh:q.dh,id:it&&it.id};return}
+  const r=frameRect(m,it);ctx.save();rrect(ctx,r.x,r.y,r.w,r.h,P.frame.rad);ctx.clip();ctx.translate(r.x,r.y);const q=placeMedia(ctx,SRC,sw,sh,r.w,r.h,z,it,'cover');ctx.restore();
   if(ctx===g)BOX.clip={x:r.x,y:r.y,w:r.w,h:r.h,dw:q.dw,dh:q.dh,id:it&&it.id};
 }
 function drawClipLayer(ctx,s,local,t){
@@ -2115,7 +2119,31 @@ function waitDequeue(enc){return new Promise(r=>{let done=false;const fin=()=>{i
 async function drain(enc,max){let q=enc.encodeQueueSize,t0=performance.now();while(enc.encodeQueueSize>max){if(X.err)throw X.err;if(X.cancel)throw 'cancel';await waitDequeue(enc);const nq=enc.encodeQueueSize;if(nq<q){q=nq;t0=performance.now()}else if(performance.now()-t0>4000){const e=new Error('STALL');e.stall=true;throw e}}}
 function seekTo(el,t){return new Promise(res=>{t=clamp(t,0,Math.max(0,(el.duration||0)-.001));if(Math.abs(el.currentTime-t)<.0005&&el.readyState>=2&&!el.seeking){res();return}
   let to;const done=()=>{clearTimeout(to);el.removeEventListener('seeked',done);res()};el.addEventListener('seeked',done);to=setTimeout(done,2500);el.currentTime=t})}
-const OPEN_ENC=new Set();function closeEncoders(){OPEN_ENC.forEach(e=>{try{if(e.state!=='closed')e.close()}catch(x){}});OPEN_ENC.clear()}
+let MP4BOXP=null;
+function loadMp4box(){if(window.MP4Box&&window.DataStream)return Promise.resolve(true);if(MP4BOXP)return MP4BOXP;MP4BOXP=new Promise(res=>{const sc=document.createElement('script');sc.src='https://cdn.jsdelivr.net/npm/mp4box@0.5.2/dist/mp4box.all.min.js';sc.onload=()=>res(!!(window.MP4Box&&window.DataStream));sc.onerror=()=>{MP4BOXP=null;res(false)};document.head.appendChild(sc);setTimeout(()=>res(false),12000)});return MP4BOXP}
+async function demux(m){
+  if(m.dmx!==undefined)return m.dmx;m.dmx=null;
+  if(!('VideoDecoder' in window)||!('EncodedVideoChunk' in window)||!m.file)return null;
+  if(!/mp4|quicktime|m4v|3gpp/i.test(m.file.type||'')&&!/\.(mp4|mov|m4v|3gp)$/i.test(m.name||''))return null;
+  if(!await loadMp4box())return null;
+  try{
+    const buf=await m.file.arrayBuffer();buf.fileStart=0;
+    const mf=MP4Box.createFile();let info=null;const samples=[];let perr=null;
+    mf.onError=e=>{perr=e};mf.onReady=inf=>{info=inf;const tr=inf.videoTracks&&inf.videoTracks[0];if(tr){mf.setExtractionOptions(tr.id,null,{nbSamples:1e9});mf.start()}};
+    mf.onSamples=(id,u,ss)=>{for(const x of ss)samples.push(x)};
+    mf.appendBuffer(buf);mf.flush();
+    if(perr||!info||!samples.length)return null;
+    const tr=info.videoTracks[0],trak=mf.getTrackById(tr.id);let desc;
+    for(const e of trak.mdia.minf.stbl.stsd.entries){const bx=e.avcC||e.hvcC||e.vpcC||e.av1C;if(bx){const ds=new DataStream(undefined,0,DataStream.BIG_ENDIAN);bx.write(ds);desc=new Uint8Array(ds.buffer,8);break}}
+    const cfg={codec:tr.codec,codedWidth:(tr.video&&tr.video.width)||tr.track_width,codedHeight:(tr.video&&tr.video.height)||tr.track_height};if(desc)cfg.description=desc;
+    let sup;try{sup=await VideoDecoder.isConfigSupported(cfg)}catch(e){sup={supported:false}}if(!sup.supported)return null;
+    const mx=tr.matrix||[65536,0,0,0,65536,0,0,0,1073741824];let rot=Math.round(Math.atan2(mx[1],mx[0])*180/Math.PI);rot=((Math.round(rot/90)*90)%360+360)%360;
+    const list=samples.map(x=>({t:x.cts/x.timescale,d:x.duration/x.timescale,key:!!x.is_sync,data:x.data}));const minT=Math.min(...list.map(x=>x.t));list.forEach(x=>x.t-=minT);
+    m.dmx={cfg,list,rot};
+  }catch(e){console.warn('demux',e);m.dmx=null}
+  return m.dmx;
+}
+const OPEN_ENC=new Set();function closeEncoders(){OPEN_ENC.forEach(e=>{try{if(e.state!=='closed')e.close()}catch(x){}});OPEN_ENC.clear();MEDIA.forEach(m=>{if(m.vkeep){try{m.vkeep.close()}catch(e){}m.vkeep=null}m.vframe=null;m.rotFrame=null})}
 async function exportFast(audio,vc,ac,onProg){try{return await exportFastInner(audio,vc,ac,onProg)}finally{closeEncoders()}}
 async function exportFastInner(audio,vc,ac,onProg){
   const vt={type:'video',kind:vc.kind,w:cv.width,h:cv.height,ts:90000,samples:[],desc:null,level:40,fallback:1e6/FPS};
@@ -2137,6 +2165,35 @@ async function exportFastInner(audio,vc,ac,onProg){
   for(let i=0;i<TL.length;i++){
     const s=TL[i],m=MEDIA.get(s.it.media),fEnd=i===TL.length-1?nF:Math.min(nF,Math.round((s.t0+s.dur)*FPS));
     const nx=TL[i+1];if(nx){const nm=MEDIA.get(nx.it.media);if(nm&&nm.kind==='video'&&nm!==m){nm.el.muted=true;nm.el.pause();await seekTo(nm.el,nx.it.in)}}
+    if(m.kind==='video'&&!X.noDecoder){const dm=await demux(m);if(dm){X.decoded=(X.decoded||0)+1;
+      const L=dm.list,st0=s.it.in+Math.max(0,f/FPS-s.t0),stEnd=s.it.in+(fEnd/FPS-s.t0)+.25;
+      let k0=0;for(let q=0;q<L.length;q++){if(L[q].key){if(L[q].t<=st0+1e-3)k0=q;else break}}
+      const pend=[];let decErr=null,fed=k0,doneFeeding=false,flushed=false;
+      const dec=new VideoDecoder({output:fr=>pend.push(fr),error:e=>{decErr=e}});OPEN_ENC.add(dec);dec.configure(dm.cfg);
+      const feed=()=>{while(fed<L.length&&dec.decodeQueueSize<8&&pend.length<6){const x=L[fed];if(x.key&&x.t>stEnd)return true;dec.decode(new EncodedVideoChunk({type:x.key?'key':'delta',timestamp:Math.round(x.t*1e6),duration:Math.max(1,Math.round(x.d*1e6)),data:x.data}));fed++}return fed>=L.length||(L[fed].key&&L[fed].t>stEnd)};
+      const waitOut=()=>new Promise(r=>{let d=false;const fin=()=>{if(d)return;d=true;try{dec.removeEventListener('dequeue',fin)}catch(e){}r()};try{dec.addEventListener('dequeue',fin)}catch(e){}setTimeout(fin,6)});
+      const lastTs=()=>pend.length?pend[pend.length-1].timestamp/1e6:-1;
+      const dropOld=stt=>{while(pend.length>1&&pend[1].timestamp/1e6<=stt+.5/FPS){pend.shift().close()}};
+      try{
+        while(f<fEnd){
+          if(X.cancel)throw 'cancel';if(decErr)throw decErr;
+          const stt=s.it.in+(f/FPS-s.t0);let guard=0;
+          while(!flushed){dropOld(stt);if(lastTs()>=stt-1e-4&&pend.length)break;
+            if(!doneFeeding)doneFeeding=feed();
+            if(doneFeeding&&dec.decodeQueueSize===0){await dec.flush();flushed=true;dropOld(stt);break}
+            await waitOut();if(decErr)throw decErr;if(++guard>6000)throw new Error('El decodificador no respondió.')}
+          if(pend.length){m.vframe=pend[0]}
+          if(ovNeeded(f/FPS))await prepOverlay(f/FPS);
+          emit();if(f%10===0){onProg(f/nF);await drain(venc,6)}else if(venc.encodeQueueSize>10)await drain(venc,6);
+          if(!doneFeeding)doneFeeding=feed();
+        }
+      }finally{
+        if(m.vkeep){try{m.vkeep.close()}catch(e){}m.vkeep=null}
+        if(pend.length){try{m.vkeep=pend[0].clone()}catch(e){}}
+        pend.forEach(fr=>{try{fr.close()}catch(e){}});m.vframe=null;m.rotFrame=null;
+        try{if(dec.state!=='closed')dec.close()}catch(e){}OPEN_ENC.delete(dec);
+      }
+      if(X.err)throw X.err;continue}}
     if(m.kind==='video'){
       const el=m.el;el.muted=true;
       const seekMode=async()=>{while(f<fEnd){if(X.cancel)throw 'cancel';await seekTo(el,s.it.in+(f/FPS-s.t0));await prepOverlay(f/FPS);emit();await drain(venc,4);onProg(f/nF)}};
@@ -2157,7 +2214,7 @@ async function exportFastInner(audio,vc,ac,onProg){
             if(venc.encodeQueueSize>6){el.pause();try{await drain(venc,2)}catch(e){end(false);return}if(done)return;el.play().catch(()=>end(false))}
             el.requestVideoFrameCallback(onFrame);
           };
-          el.playbackRate=FPS>30?1:2;el.requestVideoFrameCallback(onFrame);arm();el.play().catch(()=>end(false));
+          el.playbackRate=(FPS>30||(el.videoWidth*el.videoHeight>2.2e6))?1:1.5;el.requestVideoFrameCallback(onFrame);arm();el.play().catch(()=>end(false));
         });
         if(X.cancel)throw 'cancel';
         if(!ok)await seekMode();
@@ -2196,10 +2253,10 @@ async function runExport(){
     const audio=await mixAudio();if(X.cancel)throw 'cancel';
     const vc=await pickVideoCfg(),ac=audio?await pickAudioCfg():null;
     if(vc&&(!audio||ac)){X.fast=true;ph.textContent='Codificando el MP4 en modo rápido…';
-      try{blob=await exportFast(audio,vc,ac,onProg)}catch(e){if(!(e&&e.stall))throw e;ph.textContent='El codificador de la tarjeta de video no respondió; sigo con el de software…';X.err=null;const sw={...vc,config:{...vc.config,hardwareAcceleration:'prefer-software'}};let ok=false;try{ok=(await VideoEncoder.isConfigSupported(sw.config)).supported}catch(x){}
+      try{X.decoded=0;blob=await exportFast(audio,vc,ac,onProg)}catch(e){if(!(e&&e.stall))throw e;ph.textContent='El codificador de la tarjeta de video no respondió; sigo con el de software…';X.err=null;const sw={...vc,config:{...vc.config,hardwareAcceleration:'prefer-software'}};let ok=false;try{ok=(await VideoEncoder.isConfigSupported(sw.config)).supported}catch(x){}
         blob=await exportFast(audio,ok?sw:vc,ac,onProg)}ext='mp4';how=(vc.kind==='avc'?'H.264':'VP9')+(audio?(ac.kind==='aac'?' + AAC':' + Opus'):'')}
     else{ph.textContent='Grabando en tiempo real (tu navegador no tiene el codificador rápido)…';const r=await exportRealtime(audio,onProg);blob=r.blob;ext=r.ext;how=ext==='mp4'?'MP4':'WebM'}
-    LAST={blob,ext};window.__lastExport=LAST;
+    LAST={blob,ext};window.__lastExport=LAST;window.__lastDecoded=X.decoded||0;
     const secs=(performance.now()-t0)/1000;const v=$('#mVideo');if(v.dataset.url)URL.revokeObjectURL(v.dataset.url);v.dataset.url=URL.createObjectURL(blob);v.src=v.dataset.url;
     $('#mInfo').textContent=`${ext.toUpperCase()} · ${how} · ${(blob.size/1048576).toFixed(1)} MB · ${fmtS(TOTAL)}`;$('#mTime').textContent=`listo en ${secs.toFixed(1)} s`;
     $('#mSave').textContent='Descargar '+ext.toUpperCase();$('#mSaveMsg').textContent='';
@@ -2230,7 +2287,7 @@ invalidate();renderAll();
 if(document.fonts&&document.fonts.load){Promise.all([document.fonts.load('100px Anton'),document.fonts.load('600 20px Archivo')]).then(()=>dirty=true).catch(()=>{})}
 requestAnimationFrame(loop);
 (async()=>{let last=null;try{last=localStorage.getItem('topcut-last')}catch(e){}if(last){try{await openProject(last,true)}catch(e){console.warn(e)}}})();
-window.__topcut={drawAt:t=>{const a=performance.now();drawAt(t);return performance.now()-a},saveNow:()=>saveProject(true),openProject,listProjects,applyFormat,applyStyle,TPL,openCover,P,MEDIA,runExport,handleFiles,setAudio,get TOTAL(){return TOTAL},get busy(){return X.busy}};
+window.__topcut={demux,setNoDecoder:v=>{X.noDecoder=v},drawAt:t=>{const a=performance.now();drawAt(t);return performance.now()-a},saveNow:()=>saveProject(true),openProject,listProjects,applyFormat,applyStyle,TPL,openCover,P,MEDIA,runExport,handleFiles,setAudio,get TOTAL(){return TOTAL},get busy(){return X.busy}};
 </script>
 
 <div class="install" id="installTip" hidden><img src="/icons/apple-touch-icon.png" alt=""><p>Instala TopCut: toca <b>Compartir</b> y luego <b>Agregar a inicio</b>.</p><button type="button" id="installX">Entendido</button></div>
@@ -2253,7 +2310,7 @@ window.__topcut={drawAt:t=>{const a=performance.now();drawAt(t);return performan
 <div class="done-card" id="doneCard" hidden><b><em>✓</em> Actualizada a la versión <span id="doneV"></span></b><ul id="doneNotes"></ul><button type="button" id="doneOk">Perfecto</button></div>
 <script>
 (function(){
-  var V='1.8.2',remote=null,dismissedFor=null;
+  var V='1.8.3',remote=null,dismissedFor=null;
   var top=document.querySelector('.top .meta');
   var chip=document.createElement('button');chip.type='button';chip.className='vchip';chip.textContent='v'+V;chip.title='Buscar actualizaciones';
   if(top&&top.parentNode)top.parentNode.insertBefore(chip,top.nextSibling);
