@@ -3,7 +3,23 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="description" content="Estudio de videos de ranking verticales: sube clips, se ordenan solos y exporta el MP4 en tu navegador.">
+<meta name="description" content="Arma videos de ranking verticales con tus clips y expórtalos en MP4 desde el navegador.">
+<meta name="theme-color" content="#111016">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="TopCut">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<style>
+:root{padding-bottom:env(safe-area-inset-bottom,0px)}
+.install{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:45;display:flex;gap:12px;align-items:center;background:#22212c;border:1px solid #45425a;border-radius:12px;padding:12px 14px;box-shadow:0 12px 30px rgba(0,0,0,.5);font:500 13.5px/1.4 Archivo,system-ui,sans-serif;color:#eeedf3;max-width:520px;margin-inline:auto}
+.install img{width:40px;height:40px;border-radius:9px;flex:none}
+.install p{margin:0;flex:1}
+.install b{color:#f5b935}
+.install button{background:transparent;border:1px solid #45425a;color:#eeedf3;border-radius:8px;padding:6px 10px;font:600 12.5px Archivo,system-ui,sans-serif;cursor:pointer}
+</style>
 <title>TopCut Estudio</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
 <style>
@@ -120,6 +136,10 @@ input[type=color]{width:44px;height:32px;border:1px solid var(--line);border-rad
 .demo-flag{position:absolute;left:10px;top:10px;font-size:10.5px;font-weight:700;letter-spacing:.12em;background:rgba(10,9,14,.8);color:var(--gold);padding:4px 8px;border-radius:5px;pointer-events:none}
 .stage-msg{font-size:12.5px;color:var(--muted);text-align:center;max-width:420px;margin:0}
 .transport{width:100%;max-width:560px;display:flex;flex-direction:column;gap:8px}
+.chips{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:6px;max-width:560px}
+.chips button{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:99px;padding:6px 12px;font-size:12.5px;font-weight:600;cursor:pointer}
+.chips button[aria-pressed="true"]{background:color-mix(in srgb,var(--gold) 16%,var(--raise));border-color:color-mix(in srgb,var(--gold) 55%,var(--line));color:var(--fg)}
+.chips button[aria-pressed="true"]::before{content:'✓ ';color:var(--gold)}
 .tctl{display:flex;align-items:center;justify-content:center;gap:10px}
 .tctl .mono{font-size:12px;color:var(--muted);min-width:66px}
 .tctl .mono:last-child{text-align:right}
@@ -258,7 +278,7 @@ input[type=color]{width:44px;height:32px;border:1px solid var(--line);border-rad
             <div class="seg" id="orderSeg"><button type="button" data-v="desc">Cuenta regresiva</button><button type="button" data-v="asc">Del #1 hacia abajo</button></div>
           </div>
           <label class="check"><input type="checkbox" id="rkList" checked> Lista de puestos en pantalla</label>
-          <label class="check"><input type="checkbox" id="rkBadge" checked> Número grande al revelar cada puesto</label>
+          <label class="check"><input type="checkbox" id="rkBadge"> Número gigante al cambiar de puesto (#2)</label>
           <label class="check"><input type="checkbox" id="rkFlash" checked> Destello entre puestos</label>
         </div>
         <div class="sec" id="rankListSec">
@@ -288,6 +308,14 @@ input[type=color]{width:44px;height:32px;border:1px solid var(--line);border-rad
           <span class="mono" id="tEnd">0:00.00</span>
         </div>
       </div>
+      <div class="chips" id="showChips" role="group" aria-label="Qué se ve en el video">
+        <span class="lab">En pantalla:</span>
+        <button type="button" data-show="title">Título</button>
+        <button type="button" data-show="list">Lista</button>
+        <button type="button" data-show="badge">Número gigante</button>
+        <button type="button" data-show="cap">Subtítulos</button>
+        <button type="button" data-show="flash">Destello</button>
+      </div>
     </section>
 
     <!-- RIGHT -->
@@ -300,7 +328,7 @@ input[type=color]{width:44px;height:32px;border:1px solid var(--line);border-rad
       <div class="pbody" data-rpane="cap">
         <div class="sec">
           <h3>Subtítulos <label class="sw"><input type="checkbox" id="capOn" checked> Visibles</label></h3>
-          <p class="hint">Sincronizados con la voz: detecta las pausas de tu grabación. Vuelve a generarlos si cambias el guion.</p>
+          <p class="hint">Salen de tu guion y siguen tu voz: detectan las pausas de la grabación. Se generan solos al subir la voz o al cambiar el guion.</p>
           <button class="btn" id="capGen" type="button">Generar subtítulos</button>
           <p class="hint" id="capStatus"></p>
         </div>
@@ -400,7 +428,7 @@ input[type=color]{width:44px;height:32px;border:1px solid var(--line);border-rad
       <h3>Video listo</h3>
       <video id="mVideo" controls playsinline></video>
       <div class="spread mono"><span id="mInfo"></span><span id="mTime"></span></div>
-      <div class="row"><button class="btn primary" id="mSave" type="button">Descargar</button><button class="btn" id="mClose" type="button">Volver al editor</button></div>
+      <div class="row"><button class="btn primary" id="mSave" type="button">Descargar</button><button class="btn" id="mShare" type="button" hidden>Guardar en Fotos</button><button class="btn" id="mClose" type="button">Volver al editor</button></div>
       <p class="hint" id="mSaveMsg"></p>
     </div>
     <div id="mErr" class="sec" hidden>
@@ -434,7 +462,7 @@ const bin=$('#bin');
 const MEDIA=new Map();
 const P={
   script:'', voice:null, voiceVol:1, music:null, musicVol:.35, target:30, boost:true, autoArrange:true, demo:false,
-  ranking:{on:true,order:'desc',list:true,badge:true,flash:true,labels:{}},
+  ranking:{on:true,order:'desc',list:true,badge:false,flash:true,labels:{}},
   cap:{on:true,words:[],chunks:[],per:3,size:'M',pos:.7,color:'#ffd21f',upper:true,offset:0,mode:'',stale:false},
   canvas:{fit:'fill',bg:'#000000',blur:true},
   layout:null,
@@ -445,8 +473,8 @@ const UI={sel:null,pps:44,muted:false,lsel:null,rtab:'cap'};
 const DEF_LAYOUT=()=>({title:{dx:0,y:150,s:1},list:{x:56,y:null,s:1,gap:1},cap:{dx:0,s:1},badge:{dx:0,y:H*.47,s:1},shade:.5});
 P.layout=DEF_LAYOUT();
 const BOX={};
-function saveLayout(){try{localStorage.setItem('topcut-layout',JSON.stringify({layout:P.layout,capPos:P.cap.pos}))}catch(e){}}
-function loadLayout(){try{const o=JSON.parse(localStorage.getItem('topcut-layout')||'null');if(o&&o.layout){const d=DEF_LAYOUT();P.layout={title:{...d.title,...o.layout.title},list:{...d.list,...o.layout.list},cap:{...d.cap,...o.layout.cap},badge:{...d.badge,...o.layout.badge},shade:o.layout.shade??d.shade};if(o.capPos)P.cap.pos=o.capPos}}catch(e){}}
+function saveLayout(){try{localStorage.setItem('topcut-layout',JSON.stringify({layout:P.layout,capPos:P.cap.pos,show:{list:P.ranking.list,badge:P.ranking.badge,flash:P.ranking.flash,cap:P.cap.on,title:P.title.on}}))}catch(e){}}
+function loadLayout(){try{const o=JSON.parse(localStorage.getItem('topcut-layout')||'null');if(o&&o.layout){const d=DEF_LAYOUT();P.layout={title:{...d.title,...o.layout.title},list:{...d.list,...o.layout.list},cap:{...d.cap,...o.layout.cap},badge:{...d.badge,...o.layout.badge},shade:o.layout.shade??d.shade};if(o.capPos)P.cap.pos=o.capPos}if(o&&o.show){const v=o.show;if('list' in v)P.ranking.list=!!v.list;if('badge' in v)P.ranking.badge=!!v.badge;if('flash' in v)P.ranking.flash=!!v.flash;if('cap' in v)P.cap.on=!!v.cap;if('title' in v)P.title.on=!!v.title}}catch(e){}}
 let TL=[],TOTAL=0,GROUPS=[],GMAP=new Map();
 
 function labelOf(gid){return P.ranking.labels[gid]||''}
@@ -624,7 +652,7 @@ async function generateCaptions(){
   if(P.voice){const buf=await decodeMedia(MEDIA.get(P.voice));if(buf)map=speechMap(buf)}
   if(map){P.cap.words=buildCaptionTimes(map);P.cap.mode='voice'}
   else {const span=voiceDur()||TOTAL||P.script.split(/\s+/).length/2.6;P.cap.words=buildCaptionTimes(null,span);P.cap.mode=P.voice?'voicelinear':'timeline'}
-  P.cap.chunks=chunkWords(P.cap.words);P.cap.stale=false;P.cap.on=true;$('#capOn').checked=true;
+  P.cap.chunks=chunkWords(P.cap.words);P.cap.stale=false;P.cap.on=true;syncChips();
   btn.disabled=false;btn.textContent='Volver a generar';renderCapStatus();renderTimeline();dirty=true;
 }
 
@@ -962,7 +990,7 @@ function syncControls(){
   $('#titleText').value=P.title.text;$('#titleOn').checked=P.title.on;$('#rankOn').checked=P.ranking.on;
   $('#rkList').checked=P.ranking.list;$('#rkBadge').checked=P.ranking.badge;$('#rkFlash').checked=P.ranking.flash;
   $('#capOn').checked=P.cap.on;
-  segSet('#fitSeg',P.canvas.fit);segSet('#tStyle',P.title.style);segSet('#capPer',String(P.cap.per));$('#capPos').value=P.cap.pos;syncLayoutUI();
+  syncChips();segSet('#fitSeg',P.canvas.fit);segSet('#tStyle',P.title.style);segSet('#capPer',String(P.cap.per));$('#capPos').value=P.cap.pos;syncLayoutUI();
 }
 function segSet(sel,v){$$(sel+' button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===v))}
 
@@ -992,9 +1020,10 @@ async function setAudio(f,role){
   if(m.el&&m.el.parentNode)m.el.remove();
   MEDIA.set(m.id,m);
   if(role==='voice'){if(P.voice)removeMedia(P.voice);P.voice=m.id;if(P.cap.chunks.length)P.cap.stale=true;
-    if(TL.length){spread(true);toast('Voz lista. Los clips se repartieron sobre la narración.')}}
+    if(TL.length)spread(true)}
   else{if(P.music)removeMedia(P.music);P.music=m.id}
   invalidate();renderAll();
+  if(role==='voice'){if(P.script.trim()){await generateCaptions();toast('Voz lista: clips repartidos y subtítulos sincronizados con tu voz.',4000)}else toast('Voz lista. Pega en Guion el texto de tu narración y los subtítulos seguirán tu voz.',5000)}
 }
 $('#fileIn').onchange=e=>{handleFiles(e.target.files);e.target.value=''};
 $('#voiceIn').onchange=e=>{if(e.target.files[0])setAudio(e.target.files[0],'voice');e.target.value=''};
@@ -1010,7 +1039,8 @@ document.addEventListener('drop',e=>{e.preventDefault();if(e.target.closest&&e.t
 $$('[data-ltab]').forEach(b=>b.onclick=()=>{$$('[data-ltab]').forEach(x=>x.setAttribute('aria-selected',x===b));$$('[data-lpane]').forEach(p=>p.hidden=p.dataset.lpane!==b.dataset.ltab)});
 $$('[data-rtab]').forEach(b=>b.onclick=()=>{$$('[data-rtab]').forEach(x=>x.setAttribute('aria-selected',x===b));$$('[data-rpane]').forEach(p=>p.hidden=p.dataset.rpane!==b.dataset.rtab);UI.rtab=b.dataset.rtab;dirty=true});
 function segBind(sel,fn){$(sel).addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;fn(b.dataset.v);segSet(sel,b.dataset.v);dirty=true})}
-$('#script').oninput=e=>{P.script=e.target.value;if(P.cap.chunks.length)P.cap.stale=true;renderScriptCount();renderCapStatus()};
+let capAutoT;$('#script').oninput=e=>{P.script=e.target.value;if(P.cap.chunks.length)P.cap.stale=true;renderScriptCount();renderCapStatus();
+  clearTimeout(capAutoT);capAutoT=setTimeout(()=>{if(P.script.trim()&&(P.voice||P.cap.chunks.length))generateCaptions()},1200)};
 $('#voiceVol').oninput=e=>P.voiceVol=+e.target.value;
 $('#musicVol').oninput=e=>P.musicVol=+e.target.value;
 $('#autoArr').onchange=e=>P.autoArrange=e.target.checked;
@@ -1018,12 +1048,25 @@ $('#target').onchange=e=>P.target=+e.target.value;
 $('#boost').onchange=e=>P.boost=e.target.checked;
 $('#autoBtn').onclick=autoArrangeAll;
 $('#rankOn').onchange=e=>{P.ranking.on=e.target.checked;invalidate();renderAll()};
+function getShow(k){return k==='title'?P.title.on:k==='cap'?P.cap.on:P.ranking.on&&P.ranking[k]}
+function setShow(k,v){
+  if(k==='title')P.title.on=v;else if(k==='cap')P.cap.on=v;
+  else{P.ranking[k]=v;if(v&&!P.ranking.on){P.ranking.on=true;invalidate();renderAll()}}
+  if(k==='cap'&&v&&!P.cap.chunks.length&&P.script.trim())generateCaptions();
+  syncChips();saveLayout();dirty=true;
+}
+function syncChips(){
+  $$('#showChips [data-show]').forEach(b=>b.setAttribute('aria-pressed',!!getShow(b.dataset.show)));
+  $('#rkList').checked=P.ranking.list;$('#rkBadge').checked=P.ranking.badge;$('#rkFlash').checked=P.ranking.flash;$('#capOn').checked=P.cap.on;$('#titleOn').checked=P.title.on;
+}
+$('#showChips').addEventListener('click',e=>{const b=e.target.closest('[data-show]');if(!b)return;const k=b.dataset.show;setShow(k,!getShow(k));
+  const names={title:'Título',list:'Lista',badge:'Número gigante',cap:'Subtítulos',flash:'Destello'};toast(names[k]+(getShow(k)?' visible.':' oculto.'),1600)});
 segBind('#orderSeg',v=>{if(P.ranking.order===v)return;P.ranking.order=v;invalidate();renderAll()});
-$('#rkList').onchange=e=>{P.ranking.list=e.target.checked;dirty=true};
-$('#rkBadge').onchange=e=>{P.ranking.badge=e.target.checked;dirty=true};
-$('#rkFlash').onchange=e=>{P.ranking.flash=e.target.checked;dirty=true};
+$('#rkList').onchange=e=>setShow('list',e.target.checked);
+$('#rkBadge').onchange=e=>setShow('badge',e.target.checked);
+$('#rkFlash').onchange=e=>setShow('flash',e.target.checked);
 $('#invBtn').onclick=()=>{const o=groupOrder();if(o.length<2)return;pushUndo();setGroupOrder(o.reverse());invalidate();renderAll()};
-$('#capOn').onchange=e=>{P.cap.on=e.target.checked;dirty=true};
+$('#capOn').onchange=e=>setShow('cap',e.target.checked);
 $('#capGen').onclick=generateCaptions;
 segBind('#capPer',v=>{P.cap.per=+v;if(P.cap.words.length){P.cap.chunks=chunkWords(P.cap.words);renderTimeline()}});
 $('#capPos').oninput=e=>{P.cap.pos=+e.target.value;dirty=true};$('#capPos').onchange=saveLayout;
@@ -1034,7 +1077,7 @@ $('#capOff').onchange=()=>renderTimeline();
 segBind('#fitSeg',v=>P.canvas.fit=v);
 $('#blurBg').onchange=e=>{P.canvas.blur=e.target.checked;dirty=true};
 $('#bgColor').oninput=e=>{P.canvas.bg=e.target.value;dirty=true};
-$('#titleOn').onchange=e=>{P.title.on=e.target.checked;dirty=true};
+$('#titleOn').onchange=e=>setShow('title',e.target.checked);
 $('#titleText').oninput=e=>{P.title.text=e.target.value;dirty=true};
 $('#hold').oninput=e=>{P.title.hold=+e.target.value;$('#holdV').textContent=P.title.hold.toFixed(1)+' s';dirty=true};
 segBind('#tStyle',v=>P.title.style=v);
@@ -1215,7 +1258,9 @@ async function runExport(){
     LAST={blob,ext};window.__lastExport=LAST;
     const secs=(performance.now()-t0)/1000;const v=$('#mVideo');if(v.dataset.url)URL.revokeObjectURL(v.dataset.url);v.dataset.url=URL.createObjectURL(blob);v.src=v.dataset.url;
     $('#mInfo').textContent=`${ext.toUpperCase()} · ${how} · ${(blob.size/1048576).toFixed(1)} MB · ${fmtS(TOTAL)}`;$('#mTime').textContent=`listo en ${secs.toFixed(1)} s`;
-    $('#mSave').textContent='Descargar '+ext.toUpperCase();$('#mSaveMsg').textContent='';modalView('done');
+    $('#mSave').textContent='Descargar '+ext.toUpperCase();$('#mSaveMsg').textContent='';
+    try{const f=new File([blob],slug(P.title.text)+'.'+ext,{type:blob.type||'video/mp4'});LAST.file=f;$('#mShare').hidden=!(window.top===window&&navigator.canShare&&navigator.canShare({files:[f]}))}catch(e){$('#mShare').hidden=true}
+    modalView('done');
   }catch(e){
     if(e==='cancel'){modalView(null)}
     else{console.error(e);$('#mErrMsg').textContent=(e&&e.message)?e.message:'Algo falló al codificar. Prueba con clips MP4 (H.264) y vuelve a intentarlo.';modalView('err')}
@@ -1224,7 +1269,8 @@ async function runExport(){
 function slug(s){return (s||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60)||'ranking'}
 $('#exportBtn').onclick=runExport;
 $('#mCancel').onclick=()=>{X.cancel=true;if(X.onCancel){const f=X.onCancel;X.onCancel=null;f()}};
-$('#mClose').onclick=()=>modalView(null);$('#mErrClose').onclick=()=>modalView(null);
+$('#mClose').onclick=()=>modalView(null);
+$('#mShare').onclick=async()=>{if(!LAST||!LAST.file)return;try{await navigator.share({files:[LAST.file],title:P.title.text||'Mi ranking'});$('#mSaveMsg').textContent='Listo. Elige “Guardar video” para mandarlo a Fotos.'}catch(e){if(e&&e.name!=='AbortError')$('#mSaveMsg').textContent='No se pudo abrir el menú de compartir; usa Descargar.'}};$('#mErrClose').onclick=()=>modalView(null);
 $('#mSave').onclick=async()=>{
   if(!LAST)return;const msg=$('#mSaveMsg');const dl=await dlP;
   if(!dl){const a=document.createElement('a');a.href=URL.createObjectURL(LAST.blob);a.download=slug(P.title.text)+'.'+LAST.ext;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);msg.textContent='Descarga iniciada. Si no aparece, revisa los permisos de descarga del navegador.';return}
@@ -1241,5 +1287,16 @@ requestAnimationFrame(loop);
 window.__topcut={P,MEDIA,runExport,handleFiles,setAudio,get TOTAL(){return TOTAL}};
 </script>
 
+<div class="install" id="installTip" hidden><img src="/icons/apple-touch-icon.png" alt=""><p>Instala TopCut: toca <b>Compartir</b> y luego <b>Agregar a inicio</b>.</p><button type="button" id="installX">Entendido</button></div>
+<script>
+(function(){
+  if('serviceWorker' in navigator&&location.protocol==='https:')addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){})});
+  var ios=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  var standalone=navigator.standalone||matchMedia('(display-mode: standalone)').matches;var seen=false;
+  try{seen=localStorage.getItem('topcut-install-tip')==='1'}catch(e){}
+  if(ios&&!standalone&&!seen){var t=document.getElementById('installTip');setTimeout(function(){t.hidden=false},2500);
+    document.getElementById('installX').onclick=function(){t.hidden=true;try{localStorage.setItem('topcut-install-tip','1')}catch(e){}}}
+})();
+</script>
 </body>
 </html>
