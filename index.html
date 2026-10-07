@@ -56,7 +56,7 @@
 @media (prefers-reduced-motion:reduce){.upd,.done-card{transition:none}.upd .ic,.upd .ic svg,.vchip.has,.updating .pod i{animation:none}.updating .bar i{animation-duration:.01s}}
 </style>
 <title>TopCut Estudio</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&family=Archivo+Black&family=Bangers&family=Bebas+Neue&family=Montserrat:wght@900&family=Poppins:wght@800&family=JetBrains+Mono:wght@500&display=swap">
 <style>
 /* Layout: edit console — left tabs (guion / medios / ranking) · 9:16 monitor · right tabs (subtítulos / lienzo) · full-width timeline */
 :root{
@@ -410,6 +410,23 @@ input[type=color]{width:44px;height:32px;border:1px solid var(--line);border-rad
           <button class="btn" id="capGen" type="button">Generar subtítulos</button>
           <p class="hint" id="capStatus"></p>
         </div>
+        <div class="sec" id="asrSec">
+          <h3>Automáticos con tu voz</h3>
+          <p class="hint">Escucha tu narración y escribe los subtítulos solo, con el tiempo exacto de cada palabra. No necesitas escribir el guion. La primera vez descarga el reconocedor de voz (40 a 150 MB) y después funciona sin internet. Nada sale de tu dispositivo.</p>
+          <div class="field"><span class="lab">Reconocedor</span><div class="seg" id="asrModel"><button type="button" data-v="tiny">Rápido</button><button type="button" data-v="base">Más preciso</button></div></div>
+          <div class="row"><button class="btn primary" id="asrBtn" type="button">Transcribir mi voz</button></div>
+          <div class="prog" id="asrProg" hidden><i id="asrBar"></i></div>
+          <p class="hint" id="asrStatus"></p>
+        </div>
+        <div class="sec">
+          <div class="field"><span class="lab">Animación</span>
+            <div class="seg seg-wrap" id="capStyle"><button type="button" data-v="pop">Pop</button><button type="button" data-v="karaoke">Karaoke</button><button type="button" data-v="caja">Caja</button><button type="button" data-v="rebote">Rebote</button><button type="button" data-v="neon">Neón</button><button type="button" data-v="suave">Suave</button></div>
+          </div>
+          <div class="field"><span class="lab">Tipografía</span>
+            <select id="capFont"><option value="anton">Anton (clásica de Shorts)</option><option value="montserrat">Montserrat Black</option><option value="bebas">Bebas Neue</option><option value="poppins">Poppins ExtraBold</option><option value="bangers">Bangers (cómic)</option><option value="archivo">Archivo Black</option></select>
+          </div>
+          <label class="check"><input type="checkbox" id="capEmoji"> Emojis automáticos según lo que dices</label>
+        </div>
         <div class="sec">
           <div class="field"><span class="lab">Palabras por subtítulo</span>
             <div class="seg" id="capPer"><button type="button" data-v="1">1</button><button type="button" data-v="2">2</button><button type="button" data-v="3">3</button><button type="button" data-v="4">4</button></div>
@@ -652,7 +669,7 @@ const MEDIA=new Map();
 const P={
   script:'', voice:null, voiceVol:1, music:null, musicVol:.35, target:30, boost:true, autoArrange:true, demo:false,
   ranking:{on:true,order:'desc',list:true,badge:false,flash:true,labels:{}},
-  cap:{on:true,words:[],chunks:[],per:3,size:'M',pos:.7,color:'#ffd21f',upper:true,offset:0,mode:'',stale:false},
+  cap:{on:true,words:[],chunks:[],per:3,size:'M',pos:.7,color:'#ffd21f',upper:true,offset:0,mode:'',stale:false,style:'pop',font:'anton',emoji:false,asr:null,model:'tiny'},
   canvas:{fit:'fill',bg:'#000000',blur:true,format:'9:16',q:1080},
   bg:{type:'blur',grad:0,ga:'#0f0c29',gb:'#302b63',ang:160,gmove:false,anim:'aurora',aa:'#ff2d95',ab:'#2de2ff',spd:1,img:null,imgBlur:false,dim:.3,vig:true},
   frame:{aspect:'auto',size:.86,y:.6,rad:40,border:'none',shadow:true},
@@ -845,8 +862,14 @@ function chunkWords(words){
   return out;
 }
 function genCaptionsSync(){P.cap.words=buildCaptionTimes(null,TOTAL||Math.max(3,P.script.split(/\s+/).length/2.6));P.cap.chunks=chunkWords(P.cap.words);P.cap.mode='timeline';P.cap.stale=false}
+function alignToAsr(asr){
+  const raw=P.script.trim().split(/\s+/).filter(Boolean),A=asr.words,n=raw.length,m=A.length;if(!n||!m)return [];
+  if(n===m)return raw.map((w,i)=>({w,t0:A[i].t0,t1:A[i].t1}));
+  return raw.map((w,i)=>{const f=n===1?0:i*(m-1)/(n-1),k=Math.floor(f),r=f-k,a=A[k],b=A[Math.min(m-1,k+1)];return {w,t0:a.t0+(b.t0-a.t0)*r,t1:a.t1+(b.t1-a.t1)*r}});
+}
 async function generateCaptions(){
-  if(!P.script.trim()){toast('Escribe el guion primero: los subtítulos salen de él.');return}
+  if(!P.script.trim()){toast('Escribe el guion primero, o usa “Transcribir mi voz” para que se escriba solo.');return}
+  const vv=MEDIA.get(P.voice);if(P.cap.asr&&vv&&P.cap.asr.voice===vv.key){P.cap.words=alignToAsr(P.cap.asr);P.cap.chunks=chunkWords(P.cap.words);P.cap.mode='asr';P.cap.stale=false;P.cap.on=true;syncChips();renderCapStatus();renderTimeline();dirty=true;return}
   const btn=$('#capGen');btn.disabled=true;btn.textContent='Generando…';
   let map=null;
   if(P.voice){const buf=await decodeMedia(MEDIA.get(P.voice));if(buf)map=speechMap(buf)}
@@ -994,17 +1017,31 @@ function drawBadge(s,t,force){
   g.lineWidth=26;g.strokeStyle='#000';g.strokeText(txt,0,0);g.fillStyle=rankColor(s.g.rank);g.fillText(txt,0,0);g.restore();
   BOX.badge={x:W/2+L.dx*W-tw*L.s/2-20,y:L.y*H-190*L.s,w:tw*L.s+40,h:380*L.s};
 }
+const CAPF={anton:['400','Anton, Impact, sans-serif',1],montserrat:['900','Montserrat, "Arial Black", sans-serif',.8],bebas:['400','"Bebas Neue", Impact, sans-serif',1.15],poppins:['800','Poppins, "Arial Black", sans-serif',.82],bangers:['400','Bangers, Impact, sans-serif',1.02],archivo:['400','"Archivo Black", "Arial Black", sans-serif',.82]};
+function capFontStr(fs){const f=CAPF[P.cap.font]||CAPF.anton;return `${f[0]} ${Math.round(fs*f[2])}px ${f[1]}`}
+function loadCapFont(){if(document.fonts&&document.fonts.load)return document.fonts.load(capFontStr(88),'ABCÁÉÍÓÚÑ').then(()=>{dirty=true}).catch(()=>{});return Promise.resolve()}
+const EMO=[[/\bgol(es)?\b|futbol|balon/,'⚽'],[/fuego|incendi|caliente|picante/,'🔥'],[/dinero|millon|dolar|pesos|rico|fortuna/,'💰'],[/increib|impresionan|wow|asombr|impactant/,'🤯'],[/\bjaja|risa|chistos|gracios/,'😂'],[/\bamor\b|corazon|enamor/,'❤️'],[/perro|perrit/,'🐶'],[/\bgat(o|a|ito)s?\b/,'🐱'],[/comida|pizza|hamburgues|comer/,'🍔'],[/carro|\bauto\b|coche/,'🚗'],[/avion|vuelo|volar/,'✈️'],[/\bmar\b|oceano|ola(s)?\b|playa/,'🌊'],[/montana|cerro|volcan/,'🌋'],[/miedo|terror|aterr|escalofri/,'😱'],[/muert|calavera|mortal/,'💀'],[/rapid|veloz/,'⚡'],[/ganar|gano|campeon|trofeo|victoria/,'🏆'],[/numero uno|primer lugar|\bel uno\b/,'🥇'],[/musica|cancion|cantar/,'🎵'],[/planeta|mundo|tierra/,'🌎'],[/\bsol\b|soleado/,'☀️'],[/lluvia|llover|tormenta/,'🌧️'],[/nieve|hielo|frio|congel/,'❄️'],[/\boro\b|dorad/,'🥇'],[/diamante|cristal|joya/,'💎'],[/cerebro|inteligen|genio/,'🧠'],[/secreto|misterio|nadie sabe/,'🤫'],[/\braro|extran|bizarr/,'👀'],[/fantasma|espiritu/,'👻'],[/alien|extraterrest|ovni/,'👽'],[/espacio|cohete|nasa/,'🚀'],[/\bluna\b/,'🌙'],[/estrella/,'⭐'],[/rosa\b|rosado/,'🌸'],[/bosque|arbol|selva/,'🌳'],[/cueva/,'🕳️'],[/desierto|arena/,'🏜️'],[/isla/,'🏝️'],[/lago|rio\b/,'💧'],[/escalera|subir|nubes/,'☁️'],[/tiburon/,'🦈'],[/leon\b|tigre/,'🦁'],[/serpiente|vibora/,'🐍'],[/pajaro|\bave(s)?\b/,'🐦'],[/telefono|celular/,'📱'],[/video|pelicula|cine/,'🎬'],[/casa|hogar/,'🏠'],[/escuela|clase|maestr/,'🏫'],[/dios|milagro/,'🙏'],[/peligr|cuidado|alerta/,'⚠️'],[/loco|locura/,'🤪'],[/llorar|triste/,'😢'],[/enoj|furios/,'😡'],[/pregunta|\bpor que\b/,'❓']];
+const normTxt=x=>x.normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
+function emojiFor(ch){if(ch._em!==undefined)return ch._em;const t=normTxt(ch.words.map(w=>w.w).join(' '));let e=null;for(const [re,em] of EMO){if(re.test(t)){e=em;break}}ch._em=e;return e}
 function drawCaptions(t){
   const tt=t-P.cap.offset,ch=P.cap.chunks.find(c=>tt>=c.t0&&tt<c.t1);if(!ch)return;
-  const fs=88*P.layout.cap.s;
-  g.save();g.font=`${fs}px ${FD}`;g.textBaseline='middle';g.textAlign='left';g.lineJoin='round';
+  const st=P.cap.style||'pop',fs=88*P.layout.cap.s,col=P.cap.color;
+  g.save();g.font=capFontStr(fs);g.textBaseline='middle';g.textAlign='left';g.lineJoin='round';
   const space=g.measureText(' ').width;let act=0;ch.words.forEach((w,i)=>{if(tt>=w.t0)act=i});
-  const ws=ch.words.map((w,i)=>{let s=w.w.replace(/[.,;:]+$/,'');if(P.cap.upper)s=s.toUpperCase();return {s,ww:g.measureText(s).width,act:i===act}});
+  const ws=ch.words.map((w,i)=>{let s2=w.w.replace(/[.,;:]+$/,'');if(P.cap.upper)s2=s2.toUpperCase();return {s:s2,ww:g.measureText(s2).width,i,act:i===act,done:i<=act}});
   const lines=[];let line=[],lw=0;ws.forEach(w=>{if(line.length&&lw+space+w.ww>W*.89){lines.push({line,lw});line=[];lw=0}lw+=(line.length?space:0)+w.ww;line.push(w)});lines.push({line,lw});
-  const lh=fs*1.12,pop=clamp((tt-ch.t0)/.1,0,1),sc=.86+.14*pop,cx=W/2+P.layout.cap.dx*W,cy=P.cap.pos*H;
-  g.translate(cx,cy);g.scale(sc,sc);let y=-(lines.length-1)*lh/2;
-  for(const L of lines){let x=-L.lw/2;for(const w of L.line){g.lineWidth=fs*.18;g.strokeStyle='#000';g.strokeText(w.s,x,y);g.fillStyle=w.act?P.cap.color:'#FFFFFF';g.fillText(w.s,x,y);x+=w.ww+space}y+=lh}
-  g.restore();const mw=Math.max(...lines.map(l=>l.lw)),th=lines.length*lh;BOX.cap={x:cx-mw/2-18,y:cy-th/2-10,w:mw+36,h:th+20};
+  const lh=fs*1.16,pop=clamp((tt-ch.t0)/.1,0,1),still=st==='karaoke'||st==='neon'||st==='suave',sc=still?.96+.04*pop:.86+.14*pop,cx=W/2+P.layout.cap.dx*W,cy=P.cap.pos*H;
+  g.translate(cx,cy);g.scale(sc,sc);let y=-(lines.length-1)*lh/2;const topY=y-fs*.6;
+  for(const L of lines){let x=-L.lw/2;for(const w of L.line){
+    let dy=0,wsc=1;if(st==='rebote'&&w.act){const b=clamp((tt-ch.words[w.i].t0)/.2,0,1);dy=-Math.sin(b*Math.PI)*fs*.28;wsc=1.03+.12*Math.sin(b*Math.PI)}
+    g.save();g.translate(x+w.ww/2,y+dy);g.scale(wsc,wsc);const X0=-w.ww/2;
+    if(st==='caja'){if(w.act){const pad=fs*.16;g.fillStyle=col;rrect(g,X0-pad,-fs*.62,w.ww+pad*2,fs*1.2,fs*.2);g.fill();g.fillStyle='#111111';g.fillText(w.s,X0,fs*.02)}else{g.lineWidth=fs*.18;g.strokeStyle='#000';g.strokeText(w.s,X0,0);g.fillStyle='#FFFFFF';g.fillText(w.s,X0,0)}}
+    else if(st==='neon'){g.shadowColor=col;g.shadowBlur=fs*(w.act?.5:.28);g.fillStyle=w.act?'#FFFFFF':hexA(col.length===7?col:'#ffffff',.95);g.fillText(w.s,X0,0);if(w.act){g.fillText(w.s,X0,0)}}
+    else if(st==='suave'){g.shadowColor='rgba(0,0,0,.7)';g.shadowBlur=fs*.2;g.shadowOffsetY=fs*.06;g.fillStyle=w.act?col:'#FFFFFF';g.fillText(w.s,X0,0)}
+    else{g.lineWidth=fs*.18;g.strokeStyle='#000';g.strokeText(w.s,X0,0);g.fillStyle=(st==='karaoke'?w.done:w.act)?col:'#FFFFFF';g.fillText(w.s,X0,0)}
+    g.restore();x+=w.ww+space}y+=lh}
+  let emH=0;if(P.cap.emoji){const em=emojiFor(ch);if(em){const es=fs*1.2,b=clamp((tt-ch.t0)/.18,0,1);g.save();g.font=`${es}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;g.textAlign='center';g.globalAlpha=b;g.translate(0,topY-es*.62);g.scale(.6+.4*b,.6+.4*b);g.fillText(em,0,0);g.restore();emH=es*1.1}}
+  g.restore();const mw=Math.max(...lines.map(l=>l.lw)),th=lines.length*lh;BOX.cap={x:cx-mw/2-18,y:cy-th/2-10-emH,w:mw+36,h:th+20+emH};
 }
 function drawEmpty(){
   drawBG(g,performance.now()/1000,null,W,H);g.fillStyle='rgba(255,255,255,.55)';g.textAlign='center';g.textBaseline='middle';
@@ -1147,17 +1184,17 @@ function applyStyle(st,silent){
   if(st.layout){const d=DEF_LAYOUT();P.layout={title:{...d.title,...st.layout.title},list:{...d.list,...st.layout.list},cap:{...d.cap,...st.layout.cap},badge:{...d.badge,...st.layout.badge},v:2,shade:st.layout.shade??d.shade}}
   if(st.show){for(const k of ['list','badge','flash'])if(k in st.show)P.ranking[k]=!!st.show[k]}
   if(st.fx&&P.fx){const tv=P.fx.tvid;Object.assign(P.fx,st.fx);P.fx.tvid=tv;if(P.fx.trans==='custom'&&!MEDIA.get(tv))P.fx.trans='zoom'}if(st.sfx&&P.sfx){const cu=P.sfx.custom;Object.assign(P.sfx,st.sfx);P.sfx.custom=cu}if(st.duck&&P.duck)Object.assign(P.duck,st.duck);
-  if(!silent){if(P.cap.words.length)P.cap.chunks=chunkWords(P.cap.words);syncControls();syncBgUI();if(typeof syncFxUI==='function')syncFxUI();saveLayout();dirty=true}
+  if(!silent){loadCapFont();if(P.cap.words.length)P.cap.chunks=chunkWords(P.cap.words);syncControls();syncBgUI();if(typeof syncFxUI==='function')syncFxUI();saveLayout();dirty=true}
 }
 const TPL=[
-  {name:'Clásico',prev:'linear-gradient(160deg,#333,#000)',st:{titleStyle:'caja',fit:'fill',cap:{color:'#ffd21f',upper:true},bg:{type:'blur',dim:.3,vig:true},fx:{trans:'flash'},layout:{shade:.5}}},
-  {name:'Marco neón',prev:'linear-gradient(160deg,#ff2d95,#2de2ff)',st:{titleStyle:'contorno',fit:'frame',cap:{color:'#2de2ff',upper:true},bg:{type:'animated',anim:'rejilla',aa:'#ff2d95',ab:'#2de2ff',spd:1,dim:.1,vig:true},frame:{aspect:'auto',size:.88,y:.57,rad:36,border:'white',shadow:true},fx:{trans:'glitch'},layout:{shade:.2}}},
-  {name:'Premiación',prev:'linear-gradient(160deg,#f5d76e,#7a5a12)',st:{titleStyle:'amarilla',fit:'frame',cap:{color:'#f5b935',upper:true},bg:{type:'animated',anim:'rayos',aa:'#f5b935',ab:'#8a6110',spd:.6,dim:.25,vig:true},frame:{aspect:'auto',size:.84,y:.58,rad:28,border:'gold',shadow:true},fx:{trans:'cortina'},layout:{shade:.15}}},
-  {name:'Fiesta',prev:'linear-gradient(160deg,#ff4d6d,#4dd6ff)',st:{titleStyle:'caja',fit:'frame',cap:{color:'#ff4d6d',upper:true},bg:{type:'animated',anim:'confeti',aa:'#ff4d6d',ab:'#4dd6ff',spd:1,dim:0,vig:false},frame:{aspect:'auto',size:.86,y:.57,rad:44,border:'white',shadow:true},fx:{trans:'giro'},layout:{shade:0}}},
-  {name:'Noche',prev:'linear-gradient(160deg,#0f0c29,#302b63)',st:{titleStyle:'contorno',fit:'frame',cap:{color:'#9ab8ff',upper:true},bg:{type:'animated',anim:'estrellas',aa:'#ffffff',ab:'#7aa2ff',spd:1,dim:0,vig:true},frame:{aspect:'auto',size:.86,y:.57,rad:40,border:'none',shadow:true},fx:{trans:'fundido'},layout:{shade:.15}}},
-  {name:'Minimal',prev:'linear-gradient(160deg,#fafafa,#cfcfcf)',st:{titleStyle:'contorno',fit:'fill',cap:{color:'#ffffff',upper:false},bg:{type:'blur',dim:.2,vig:false},fx:{trans:'fundido'},layout:{shade:.15}}},
-  {name:'Atardecer',prev:'linear-gradient(160deg,#ff512f,#dd2476)',st:{titleStyle:'caja',fit:'frame',cap:{color:'#ffd21f',upper:true},bg:{type:'gradient',ga:'#ff512f',gb:'#dd2476',ang:160,gmove:true,dim:.1,vig:true},frame:{aspect:'auto',size:.86,y:.57,rad:40,border:'white',shadow:true},fx:{trans:'barrido'},layout:{shade:.2}}},
-  {name:'Hacker',prev:'linear-gradient(160deg,#00ff88,#002211)',st:{titleStyle:'contorno',fit:'frame',cap:{color:'#00ff88',upper:true},bg:{type:'animated',anim:'lluvia',aa:'#00ff88',ab:'#004422',spd:1,dim:.25,vig:true},frame:{aspect:'auto',size:.86,y:.57,rad:16,border:'rank',shadow:true},fx:{trans:'glitch'},layout:{shade:.2}}},
+  {name:'Clásico',prev:'linear-gradient(160deg,#333,#000)',st:{titleStyle:'caja',fit:'fill',cap:{style:'pop',font:'anton',color:'#ffd21f',upper:true},bg:{type:'blur',dim:.3,vig:true},fx:{trans:'flash'},layout:{shade:.5}}},
+  {name:'Marco neón',prev:'linear-gradient(160deg,#ff2d95,#2de2ff)',st:{titleStyle:'contorno',fit:'frame',cap:{style:'neon',font:'bebas',color:'#2de2ff',upper:true},bg:{type:'animated',anim:'rejilla',aa:'#ff2d95',ab:'#2de2ff',spd:1,dim:.1,vig:true},frame:{aspect:'auto',size:.88,y:.57,rad:36,border:'white',shadow:true},fx:{trans:'glitch'},layout:{shade:.2}}},
+  {name:'Premiación',prev:'linear-gradient(160deg,#f5d76e,#7a5a12)',st:{titleStyle:'amarilla',fit:'frame',cap:{style:'caja',font:'montserrat',color:'#f5b935',upper:true},bg:{type:'animated',anim:'rayos',aa:'#f5b935',ab:'#8a6110',spd:.6,dim:.25,vig:true},frame:{aspect:'auto',size:.84,y:.58,rad:28,border:'gold',shadow:true},fx:{trans:'cortina'},layout:{shade:.15}}},
+  {name:'Fiesta',prev:'linear-gradient(160deg,#ff4d6d,#4dd6ff)',st:{titleStyle:'caja',fit:'frame',cap:{style:'rebote',font:'bangers',color:'#ff4d6d',upper:true},bg:{type:'animated',anim:'confeti',aa:'#ff4d6d',ab:'#4dd6ff',spd:1,dim:0,vig:false},frame:{aspect:'auto',size:.86,y:.57,rad:44,border:'white',shadow:true},fx:{trans:'giro'},layout:{shade:0}}},
+  {name:'Noche',prev:'linear-gradient(160deg,#0f0c29,#302b63)',st:{titleStyle:'contorno',fit:'frame',cap:{style:'suave',font:'poppins',color:'#9ab8ff',upper:true},bg:{type:'animated',anim:'estrellas',aa:'#ffffff',ab:'#7aa2ff',spd:1,dim:0,vig:true},frame:{aspect:'auto',size:.86,y:.57,rad:40,border:'none',shadow:true},fx:{trans:'fundido'},layout:{shade:.15}}},
+  {name:'Minimal',prev:'linear-gradient(160deg,#fafafa,#cfcfcf)',st:{titleStyle:'contorno',fit:'fill',cap:{style:'suave',font:'montserrat',color:'#ffffff',upper:false},bg:{type:'blur',dim:.2,vig:false},fx:{trans:'fundido'},layout:{shade:.15}}},
+  {name:'Atardecer',prev:'linear-gradient(160deg,#ff512f,#dd2476)',st:{titleStyle:'caja',fit:'frame',cap:{style:'karaoke',font:'anton',color:'#ffd21f',upper:true},bg:{type:'gradient',ga:'#ff512f',gb:'#dd2476',ang:160,gmove:true,dim:.1,vig:true},frame:{aspect:'auto',size:.86,y:.57,rad:40,border:'white',shadow:true},fx:{trans:'barrido'},layout:{shade:.2}}},
+  {name:'Hacker',prev:'linear-gradient(160deg,#00ff88,#002211)',st:{titleStyle:'contorno',fit:'frame',cap:{style:'karaoke',font:'archivo',color:'#00ff88',upper:true},bg:{type:'animated',anim:'lluvia',aa:'#00ff88',ab:'#004422',spd:1,dim:.25,vig:true},frame:{aspect:'auto',size:.86,y:.57,rad:16,border:'rank',shadow:true},fx:{trans:'glitch'},layout:{shade:.2}}},
 ];
 function loadMyTpls(){try{return JSON.parse(localStorage.getItem('topcut-templates')||'[]')}catch(e){return []}}
 function saveMyTpls(a){try{localStorage.setItem('topcut-templates',JSON.stringify(a))}catch(e){toast('No se pudo guardar en este navegador.')}}
@@ -1436,6 +1473,50 @@ setInterval(()=>saveProject(),4000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')saveProject()});
 window.addEventListener('pagehide',()=>{saveProject()});
 
+
+/* ============ automatic transcription (Whisper in the browser) ============ */
+const inFrame=(()=>{try{return window.top!==window}catch(e){return true}})();
+function asrStatus(t,p){$('#asrStatus').textContent=t;const pr=$('#asrProg');if(p==null){pr.hidden=true}else{pr.hidden=false;$('#asrBar').style.width=Math.round(p*100)+'%'}}
+let ASRP=null;
+async function getAsr(model){
+  if(ASRP&&ASRP.model===model)return ASRP.p;
+  const T=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3');T.env.allowLocalModels=false;
+  const files={};const prog=d=>{if(d&&d.status==='progress'&&d.file){files[d.file]={l:d.loaded||0,t:d.total||0};let l=0,t=0;for(const k in files){l+=files[k].l;t+=files[k].t}if(t)asrStatus(`Descargando el reconocedor… ${(l/1048576).toFixed(0)} de ${(t/1048576).toFixed(0)} MB`,l/t)}};
+  const ids=model==='base'?['onnx-community/whisper-base_timestamped','Xenova/whisper-base']:['onnx-community/whisper-tiny_timestamped','Xenova/whisper-tiny'];
+  const p=(async()=>{let err;for(const id of ids){try{return await T.pipeline('automatic-speech-recognition',id,{progress_callback:prog})}catch(e){err=e;console.warn('asr model',id,e)}}throw err})();
+  ASRP={model,p};p.catch(()=>{ASRP=null});return p;
+}
+async function transcribe(){
+  if(inFrame){asrStatus('La transcripción automática funciona en la app (topcut-estudio.vercel.app). Aquí usa “Generar subtítulos” con tu guion.');return}
+  const v=MEDIA.get(P.voice);if(!v){toast('Primero sube tu voz en “Guion y voz”.');document.querySelector('[data-ltab="script"]').click();return}
+  const btn=$('#asrBtn');btn.disabled=true;
+  try{
+    asrStatus('Preparando tu audio…',0);const buf=await decodeMedia(v);if(!buf)throw new Error('No pude leer el audio de tu voz.');
+    const len=Math.ceil(buf.duration*16000),oc=new OfflineAudioContext(1,len,16000),src=oc.createBufferSource();src.buffer=buf;src.connect(oc.destination);src.start();const audio=(await oc.startRendering()).getChannelData(0);
+    asrStatus('Cargando el reconocedor…',.02);const asr=await getAsr(P.cap.model||'tiny');
+    asrStatus('Escuchando tu voz… (puede tardar un poco)',null);
+    let out,wordMode=true;const base={language:'spanish',task:'transcribe',chunk_length_s:30,stride_length_s:5};
+    try{out=await asr(audio,{...base,return_timestamps:'word'})}catch(e){console.warn('word ts',e);wordMode=false;out=await asr(audio,{...base,return_timestamps:true})}
+    let words=[];const chunks=(out&&out.chunks)||[];
+    if(wordMode){chunks.forEach(c=>{const w=(c.text||'').trim();if(!w)return;const a=c.timestamp&&c.timestamp[0]!=null?c.timestamp[0]:null,b=c.timestamp&&c.timestamp[1]!=null?c.timestamp[1]:null;if(a==null)return;words.push({w,t0:a,t1:b!=null?b:a+.3})})}
+    else{chunks.forEach(c=>{const ws=(c.text||'').trim().split(/\s+/).filter(Boolean);if(!ws.length)return;const a=c.timestamp[0]||0,b=c.timestamp[1]!=null?c.timestamp[1]:a+ws.length*.35;const tot=ws.reduce((x,w)=>x+w.length+1,0);let acc=0;ws.forEach(w=>{const t0=a+(b-a)*acc/tot;acc+=w.length+1;words.push({w,t0,t1:a+(b-a)*acc/tot})})})}
+    if(!words.length&&out&&out.text){const ws=out.text.trim().split(/\s+/).filter(Boolean);const d=buf.duration;ws.forEach((w,i)=>words.push({w,t0:i*d/ws.length,t1:(i+1)*d/ws.length}))}
+    words=words.filter(w=>/[\p{L}\p{N}]/u.test(w.w)).map(w=>({w:w.w.replace(/^[¿¡"«]+|["»]+$/g,''),t0:Math.max(0,w.t0),t1:Math.max(w.t0+.05,w.t1)}));
+    if(!words.length)throw new Error('No escuché palabras claras en tu voz.');
+    P.cap.asr={voice:v.key,words:words.map(w=>({...w}))};P.script=words.map(w=>w.w).join(' ');$('#script').value=P.script;renderScriptCount();
+    P.cap.words=words;P.cap.chunks=chunkWords(words);P.cap.mode='asr';P.cap.stale=false;P.cap.on=true;syncChips();renderCapStatus();renderTimeline();dirty=true;PROJ.dirty=true;
+    asrStatus(`Listo: ${words.length} palabras. Puedes corregir el texto en “Guion”; los tiempos se mantienen.`,null);toast('Subtítulos automáticos listos.');
+  }catch(e){console.error(e);asrStatus((e&&e.message&&/fetch|network|Failed/i.test(e.message))?'No se pudo descargar el reconocedor. Revisa tu internet e inténtalo de nuevo.':'No se pudo transcribir: '+(e&&e.message||'error desconocido'),null)}
+  btn.disabled=false;
+}
+$('#asrBtn').onclick=transcribe;
+segBind('#asrModel',v=>{P.cap.model=v});
+segBind('#capStyle',v=>{P.cap.style=v;saveLayout()});
+$('#capFont').onchange=e=>{P.cap.font=e.target.value;loadCapFont();saveLayout()};
+$('#capEmoji').onchange=e=>{P.cap.emoji=e.target.checked;dirty=true;saveLayout()};
+function syncCapUI(){segSet('#capStyle',P.cap.style||'pop');$('#capFont').value=P.cap.font||'anton';$('#capEmoji').checked=!!P.cap.emoji;segSet('#asrModel',P.cap.model||'tiny');$('#capColor').value=P.cap.color;$('#capUpper').checked=P.cap.upper;
+  if(inFrame&&!$('#asrStatus').textContent)$('#asrStatus').textContent='Disponible en la app de Vercel.'}
+
 /* ============ preview engine ============ */
 const E={playing:false,t:0,cur:-1,last:performance.now(),silent:false,onEnd:null};
 let dirty=true,lastPaint=0;
@@ -1617,7 +1698,7 @@ $('#ranks').addEventListener('click',e=>{const u=e.target.closest('[data-up]'),d
 function renderCapStatus(){
   const st=$('#capStatus');const n=P.cap.chunks.length;
   if(!n){st.textContent=P.voice?'Genera los subtítulos: el tiempo sale de tu voz.':'Sin voz, los subtítulos se reparten en la duración del video.';return}
-  const how=P.cap.mode==='voice'?'sincronizados con las pausas de tu voz':P.cap.mode==='voicelinear'?'repartidos a lo largo de la voz':'repartidos en la duración del video';
+  const how=P.cap.mode==='asr'?'transcritos de tu voz con el tiempo de cada palabra':P.cap.mode==='voice'?'sincronizados con las pausas de tu voz':P.cap.mode==='voicelinear'?'repartidos a lo largo de la voz':'repartidos en la duración del video';
   st.textContent=`${n} subtítulos, ${how}.`+(P.cap.stale?' El guion o la voz cambiaron: vuelve a generarlos.':'');
   $('#capGen').textContent='Volver a generar';
 }
@@ -1642,7 +1723,7 @@ function syncControls(){
   $('#titleText').value=P.title.text;$('#titleOn').checked=P.title.on;$('#rankOn').checked=P.ranking.on;
   $('#rkList').checked=P.ranking.list;$('#rkBadge').checked=P.ranking.badge;$('#rkFlash').checked=P.ranking.flash;
   $('#capOn').checked=P.cap.on;
-  syncChips();syncBgUI();syncFxUI();segSet('#tStyle',P.title.style);segSet('#capPer',String(P.cap.per));$('#capPos').value=P.cap.pos;syncLayoutUI();
+  syncChips();syncBgUI();syncFxUI();syncCapUI();segSet('#tStyle',P.title.style);segSet('#capPer',String(P.cap.per));$('#capPos').value=P.cap.pos;syncLayoutUI();
 }
 function segSet(sel,v){$$(sel+' button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.v===v))}
 
@@ -1904,9 +1985,10 @@ function exportRealtime(audio,onProg){return new Promise(async(res,rej)=>{
 })}
 function modalView(v){$('#modal').hidden=!v;$('#mWork').hidden=v!=='work';$('#mDone').hidden=v!=='done';$('#mErr').hidden=v!=='err'}
 async function runExport(){
+  if(X.busy)return;
   if(X.busy||!TL.length)return;
   const notReady=P.items.map(i=>MEDIA.get(i.media)).filter(m=>!m||!m.ready);if(notReady.length){toast('Espera a que terminen de cargar los clips.');return}
-  pause();X.busy=true;X.cancel=false;X.err=null;modalView('work');
+  pause();await loadCapFont();X.busy=true;X.cancel=false;X.err=null;modalView('work');
   const bar=$('#mBar'),pct=$('#mPct'),ph=$('#mPhase'),spd=$('#mSpeed');bar.style.width='0%';pct.textContent='0%';spd.textContent='';ph.textContent='Mezclando el audio…';
   const t0=performance.now();let blob,ext='mp4',how='';
   const onProg=p=>{bar.style.width=(p*100).toFixed(1)+'%';pct.textContent=Math.round(p*100)+'%';const el=(performance.now()-t0)/1000;if(el>1&&p>0)spd.textContent=(TOTAL*p/el).toFixed(1)+'× tiempo real'};
@@ -1939,7 +2021,7 @@ $('#mSave').onclick=async()=>{
 };
 
 /* ============ boot ============ */
-loadLayout();setMode(getMode(),true);applyFormat();renderTpls();buildSfx();loadDemo();
+loadLayout();setMode(getMode(),true);loadCapFont();applyFormat();renderTpls();buildSfx();loadDemo();
 $('#titleText').value=P.title.text;$('#script').value=P.script;
 invalidate();renderAll();
 if(document.fonts&&document.fonts.load){Promise.all([document.fonts.load('100px Anton'),document.fonts.load('600 20px Archivo')]).then(()=>dirty=true).catch(()=>{})}
@@ -1968,7 +2050,7 @@ window.__topcut={saveNow:()=>saveProject(true),openProject,listProjects,applyFor
 <div class="done-card" id="doneCard" hidden><b><em>✓</em> Actualizada a la versión <span id="doneV"></span></b><ul id="doneNotes"></ul><button type="button" id="doneOk">Perfecto</button></div>
 <script>
 (function(){
-  var V='1.6.0',remote=null,dismissedFor=null;
+  var V='1.7.0',remote=null,dismissedFor=null;
   var top=document.querySelector('.top .meta');
   var chip=document.createElement('button');chip.type='button';chip.className='vchip';chip.textContent='v'+V;chip.title='Buscar actualizaciones';
   if(top&&top.parentNode)top.parentNode.insertBefore(chip,top.nextSibling);
