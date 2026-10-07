@@ -958,6 +958,7 @@ function frameRect(m,it){
   let fw=W*F.size,fh=fw/ar;const maxH=H*(W>H?.8:.7)*Math.min(1.25,F.size/.86);if(fh>maxH){fh=maxH;fw=fh*ar}
   const cy=F.y*H;return {x:(W-fw)/2,y:clamp(cy-fh/2,0,H-fh),w:fw,h:fh};
 }
+function itemFit(it,sw,sh,w,h){const f=it&&it.fit||'auto';if(f==='fill')return 'cover';if(f==='whole')return 'contain';const r=(sw/sh)/(w/h);return (r>1.6||r<1/1.6)?'contain':'cover'}
 function placeMedia(ctx,src,sw,sh,w,h,z,it,how){
   const base=how==='contain'?Math.min(w/sw,h/sh):Math.max(w/sw,h/sh),s2=base*z*(it&&it.z||1),dw=sw*s2,dh=sh*s2;
   const fx=it&&it.fx!=null?it.fx:.5,fy=it&&it.fy!=null?it.fy:.5;
@@ -965,12 +966,12 @@ function placeMedia(ctx,src,sw,sh,w,h,z,it,how){
 }
 function drawMedia(ctx,m,it,local,dur,w,h,mode){
   // draws only the clip itself; mode: 'fill' | 'fit' | 'frame' (frame draws into the frame rect)
-  if(m.kind==='demo'){if(mode==='fill'||!mode)return drawDemo(ctx,m,local,w,h);
+  if(m.kind==='demo'){if(mode==='fill'||!mode){const zz=it&&it.z||1,ox=it&&it.ox||0,oy=it&&it.oy||0;if(zz===1&&!ox&&!oy){drawDemo(ctx,m,local,w,h)}else{ctx.save();ctx.translate(w/2+ox*w,h/2+oy*h);ctx.scale(zz,zz);ctx.translate(-w/2,-h/2);drawDemo(ctx,m,local,w,h);ctx.restore()}if(ctx===g)BOX.clip={x:0,y:0,w,h,dw:w*zz,dh:h*zz,id:it&&it.id,demo:true};return}
     const r=mode==='frame'?frameRect(m,it):{x:0,y:0,w,h};ctx.save();ctx.translate(r.x,r.y);if(mode==='frame'){rrect(ctx,0,0,r.w,r.h,P.frame.rad);ctx.clip()}
     if(mode==='fit'){const s=Math.min(w/1080,h/1920);ctx.translate((w-1080*s)/2,(h-1920*s)/2);drawDemo(ctx,m,local,1080*s,1920*s)}else drawDemo(ctx,m,local,r.w,r.h);ctx.restore();return}
   let [sw,sh]=mediaSize(m),z=1;if(!sw||!sh)return;
   if(P.fx.kb||m.kind==='image')z=1+(m.kind==='image'?.08:.05)*clamp(local/Math.max(dur,.1),0,1);
-  if(!mode||mode==='fill'){const q=placeMedia(ctx,m.el,sw,sh,w,h,z,it,'cover');if(ctx===g)BOX.clip={x:0,y:0,w,h,dw:q.dw,dh:q.dh,id:it&&it.id};return}
+  if(!mode||mode==='fill'){const q=placeMedia(ctx,m.el,sw,sh,w,h,z,it,itemFit(it,sw,sh,w,h));if(ctx===g)BOX.clip={x:0,y:0,w,h,dw:q.dw,dh:q.dh,id:it&&it.id};return}
   if(mode==='fit'){const q=placeMedia(ctx,m.el,sw,sh,w,h,z,it,'contain');if(ctx===g)BOX.clip={x:0,y:0,w,h,dw:q.dw,dh:q.dh,id:it&&it.id};return}
   const r=frameRect(m,it);ctx.save();rrect(ctx,r.x,r.y,r.w,r.h,P.frame.rad);ctx.clip();ctx.translate(r.x,r.y);const q=placeMedia(ctx,m.el,sw,sh,r.w,r.h,z,it,'cover');ctx.restore();
   if(ctx===g)BOX.clip={x:r.x,y:r.y,w:r.w,h:r.h,dw:q.dw,dh:q.dh,id:it&&it.id};
@@ -1076,7 +1077,7 @@ const HIT_ORDER=['badge','cap','list','title','frame'];
 function cvPoint(e){const r=cv.getBoundingClientRect();return {x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}}
 function hitBox(p){for(const k of HIT_ORDER){const b=BOX[k];if(b&&p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h)return k}return null}
 let ldrag=null;
-function selItemAtPlayhead(){const it=P.items.find(x=>x.id===UI.sel);if(!it)return null;const s2=TL.find(x=>x.it===it);if(!s2||E.t<s2.t0||E.t>=s2.t0+s2.dur)return null;const m=MEDIA.get(it.media);return m&&m.kind!=='demo'?it:null}
+function selItemAtPlayhead(){const it=P.items.find(x=>x.id===UI.sel);if(!it)return null;const s2=TL.find(x=>x.it===it);if(!s2||E.t<s2.t0||E.t>=s2.t0+s2.dur)return null;const m=MEDIA.get(it.media);return m?it:null}
 function clipPannable(p){const it=selItemAtPlayhead(),c=BOX.clip;return !!(it&&c&&c.id===it.id&&p.x>=c.x&&p.x<=c.x+c.w&&p.y>=c.y&&p.y<=c.y+c.h)}
 cv.addEventListener('pointerdown',e=>{
   if(X.busy)return;const p=cvPoint(e);let k=hitBox(p);if((k==='frame'||!k)&&clipPannable(p))k='clip';
@@ -1090,8 +1091,11 @@ cv.addEventListener('pointermove',e=>{
   const p=cvPoint(e);
   if(!ldrag){let k=hitBox(p);if((k==='frame'||!k)&&clipPannable(p)){cv.style.cursor='grab';if(UI.hover){UI.hover=null;dirty=true}return}if(k!==UI.hover){UI.hover=k;dirty=true}cv.style.cursor=k?'move':'default';return}
   if(ldrag.k==='clip'){const c=BOX.clip,it=ldrag.it;if(!c){return}if(!ldrag.moved){ldrag.moved=true;pushUndo()}cv.style.cursor='grabbing';
-    if(P.magnet===false){it.ox=clamp(ldrag.start.ox+(p.x-ldrag.p0.x)/c.w,-1.5,1.5);it.oy=clamp(ldrag.start.oy+(p.y-ldrag.p0.y)/c.h,-1.5,1.5)}
-    else{if(c.dw>c.w)it.fx=clamp(ldrag.start.fx-(p.x-ldrag.p0.x)/(c.dw-c.w),0,1);if(c.dh>c.h)it.fy=clamp(ldrag.start.fy-(p.y-ldrag.p0.y)/(c.dh-c.h),0,1)}dirty=true;PROJ.dirty=true;return}
+    const dxp=(p.x-ldrag.p0.x),dyp=(p.y-ldrag.p0.y),S0=ldrag.start;
+    if(P.magnet===false||c.demo){it.ox=clamp(S0.ox+dxp/c.w,-1.5,1.5);it.oy=clamp(S0.oy+dyp/c.h,-1.5,1.5)}
+    else{if(c.dw>c.w+1){it.fx=clamp(S0.fx-dxp/(c.dw-c.w),0,1);it.ox=0}else{const lim=(c.w-c.dw)/(2*c.w);it.ox=clamp(S0.ox+dxp/c.w,-lim,lim)}
+      if(c.dh>c.h+1){it.fy=clamp(S0.fy-dyp/(c.dh-c.h),0,1);it.oy=0}else{const lim=(c.h-c.dh)/(2*c.h);it.oy=clamp(S0.oy+dyp/c.h,-lim,lim)}}
+    dirty=true;PROJ.dirty=true;return}
   const dx=(p.x-ldrag.p0.x)/W,dy=(p.y-ldrag.p0.y)/H,S=ldrag.start;
   if(ldrag.k==='frame'){P.frame.y=clamp(S.y+dy,.1,.9);syncBgUI();dirty=true;return}
   const L=P.layout[ldrag.k];
@@ -1105,7 +1109,7 @@ function endLdrag(){if(ldrag){const was=ldrag.k;ldrag=null;if(was==='clip'){PROJ
 cv.addEventListener('pointerup',endLdrag);cv.addEventListener('pointercancel',endLdrag);
 cv.addEventListener('pointerleave',()=>{if(UI.hover){UI.hover=null;dirty=true}});
 cv.addEventListener('wheel',e=>{
-  const pp=cvPoint(e);let hk=hitBox(pp);if((hk==='frame'||!hk)&&clipPannable(pp)){e.preventDefault();const it=selItemAtPlayhead();it.z=clamp((it.z||1)*(e.deltaY<0?1.05:1/1.05),P.magnet===false?.3:1,3);dirty=true;PROJ.dirty=true;clearTimeout(cv._iz);cv._iz=setTimeout(renderInspector,250);return}
+  const pp=cvPoint(e);let hk=hitBox(pp);if((hk==='frame'||!hk)&&clipPannable(pp)){e.preventDefault();const it=selItemAtPlayhead();it.z=clamp((it.z||1)*(e.deltaY<0?1.05:1/1.05),.25,3);dirty=true;PROJ.dirty=true;clearTimeout(cv._iz);cv._iz=setTimeout(renderInspector,250);return}
   const k=hk||UI.lsel;if(!k||X.busy)return;e.preventDefault();
   if(k==='frame'){P.frame.size=clamp(P.frame.size*(e.deltaY<0?1.03:1/1.03),.4,1);syncBgUI();dirty=true;clearTimeout(cv._st);cv._st=setTimeout(saveLayout,300);return}
   const L=P.layout[k],max=k==='badge'?1.8:k==='title'||k==='list'?2:2.2;L.s=clamp(L.s*(e.deltaY<0?1.05:1/1.05),.3,max);
@@ -1624,9 +1628,9 @@ function renderInspector(){
     ${m.kind==='video'?`<div class="f w"><span class="lab">Empieza en <span class="mono" id="iInV">${it.in.toFixed(2)} s</span> de ${fmtS(m.duration)}</span><input type="range" id="iIn" min="0" max="${maxIn.toFixed(2)}" step="0.05" value="${it.in}"></div>`:''}
     <div class="f"><span class="lab">Duración (s)</span><input type="number" id="iDur" min="0.3" step="0.1" value="${it.dur.toFixed(2)}"></div>
     ${m.kind==='video'?`<div class="f"><span class="lab">Audio del clip</span><div class="row"><label class="sw"><input type="checkbox" id="iAud" ${it.muted?'':'checked'}> ${it.muted?'Silenciado':'Activo'}</label><input type="range" id="iVol" min="0" max="1" step="0.05" value="${it.vol}" style="width:90px" aria-label="Volumen del clip"></div></div>`:''}
-    ${m.kind!=='demo'?`<div class="f"><span class="lab">Encuadre · zoom <span class="mono" id="iZV">${Math.round((it.z||1)*100)}%</span></span><div class="row"><input type="range" id="iZ" min="${P.magnet===false?0.3:1}" max="3" step="0.05" value="${it.z||1}" style="width:100px" aria-label="Zoom del clip"><button class="btn small" type="button" id="iCenter">Centrar</button></div></div>`:''}
+    ${true?`<div class="f"><span class="lab">Ajuste del clip</span><div class="seg" id="iFit"><button type="button" data-v="auto">Auto</button><button type="button" data-v="fill">Llenar</button><button type="button" data-v="whole">Completo</button></div></div><div class="f"><span class="lab">Encuadre · zoom <span class="mono" id="iZV">${Math.round((it.z||1)*100)}%</span></span><div class="row"><input type="range" id="iZ" min="0.25" max="3" step="0.05" value="${it.z||1}" style="width:100px" aria-label="Zoom del clip"><button class="btn small" type="button" id="iCenter">Centrar</button></div></div>`:''}
     <div class="row"><button class="btn small" type="button" id="iSplit">Dividir</button><button class="btn small danger" type="button" id="iDel">Borrar</button></div>
-    ${m.kind!=='demo'?`<span class="hint" style="flex-basis:100%">Arrastra el video en la vista previa para elegir qué parte se ve. La rueda del mouse acerca o aleja.${P.magnet===false?' Sin imán puedes sacarlo de la orilla y hacerlo más chico.':''}</span>`:''}`;
+    ${true?`<span class="hint" style="flex-basis:100%">Arrastra el video en la vista previa para elegir qué parte se ve. La rueda del mouse acerca o aleja; si lo haces más chico, lo que sobra se ve negro (o tu fondo en modo Marco o Ajustar).${P.magnet===false?' Sin imán puedes sacarlo de la orilla.':''}</span>`:''}`;
   $('#iLabel').oninput=e=>{P.ranking.labels[it.group]=e.target.value;dirty=true;renderRankList(true)};
   $('#iLabel').onchange=()=>renderTimeline();
   const iIn=$('#iIn');if(iIn){iIn.onpointerdown=()=>pushUndo();iIn.oninput=e=>{it.in=+e.target.value;it.dur=Math.min(it.dur,avail(it));$('#iInV').textContent=it.in.toFixed(2)+' s';rebuild();const s2=TL.find(x=>x.it===it);if(s2&&!E.playing){E.cur=-1;seek(s2.t0+.01)}};iIn.onchange=()=>{invalidate();renderTimeline()}}
@@ -1636,6 +1640,7 @@ function renderInspector(){
   $('#iSplit').onclick=()=>{const s2=TL.find(x=>x.it===it);if(s2&&(E.t<s2.t0||E.t>s2.t0+s2.dur))seek(s2.t0+s2.dur/2);splitAtPlayhead()};
   $('#iDel').onclick=deleteSelected;
   const iZ=$('#iZ');if(iZ){iZ.onpointerdown=()=>pushUndo();iZ.oninput=e=>{it.z=+e.target.value;$('#iZV').textContent=Math.round(it.z*100)+'%';const s2=TL.find(x=>x.it===it);if(s2&&(E.t<s2.t0||E.t>=s2.t0+s2.dur))seek(s2.t0+.05);dirty=true;PROJ.dirty=true}}
+  const iF=$('#iFit');if(iF){segSet('#iFit',it.fit||'auto');iF.onclick=e=>{const b=e.target.closest('button');if(!b)return;pushUndo();it.fit=b.dataset.v;segSet('#iFit',it.fit);const s2=TL.find(x=>x.it===it);if(s2&&(E.t<s2.t0||E.t>=s2.t0+s2.dur))seek(s2.t0+.05);dirty=true;PROJ.dirty=true}}
   const iC=$('#iCenter');if(iC)iC.onclick=()=>{pushUndo();it.fx=.5;it.fy=.5;it.z=1;it.ox=0;it.oy=0;renderInspector();dirty=true;PROJ.dirty=true};
 }
 // timeline pointer interactions
@@ -1931,7 +1936,7 @@ async function pickAudioCfg(){
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 // yields without timers so background/hidden tabs are not throttled
 const yieldNow=()=>new Promise(r=>{const ch=new MessageChannel();ch.port1.onmessage=()=>{ch.port1.close();r()};ch.port2.postMessage(0)});
-function waitDequeue(enc){return new Promise(r=>{let done=false;const fin=()=>{if(done)return;done=true;try{enc.removeEventListener('dequeue',fin)}catch(e){}r()};try{enc.addEventListener('dequeue',fin)}catch(e){}setTimeout(fin,40);let n=0;const spin=()=>{if(done)return;if(enc.encodeQueueSize===0||++n>400){fin();return}yieldNow().then(spin)};spin()})}
+function waitDequeue(enc){return new Promise(r=>{let done=false;const fin=()=>{if(done)return;done=true;try{enc.removeEventListener('dequeue',fin)}catch(e){}r()};try{enc.addEventListener('dequeue',fin)}catch(e){}setTimeout(fin,15)})}
 async function drain(enc,max){while(enc.encodeQueueSize>max){if(X.err)throw X.err;await waitDequeue(enc)}}
 function seekTo(el,t){return new Promise(res=>{t=clamp(t,0,Math.max(0,(el.duration||0)-.001));if(Math.abs(el.currentTime-t)<.0005&&el.readyState>=2&&!el.seeking){res();return}
   let to;const done=()=>{clearTimeout(to);el.removeEventListener('seeked',done);res()};el.addEventListener('seeked',done);to=setTimeout(done,2500);el.currentTime=t})}
@@ -2068,7 +2073,7 @@ window.__topcut={drawAt:t=>{const a=performance.now();drawAt(t);return performan
 <div class="done-card" id="doneCard" hidden><b><em>✓</em> Actualizada a la versión <span id="doneV"></span></b><ul id="doneNotes"></ul><button type="button" id="doneOk">Perfecto</button></div>
 <script>
 (function(){
-  var V='1.7.3',remote=null,dismissedFor=null;
+  var V='1.7.4',remote=null,dismissedFor=null;
   var top=document.querySelector('.top .meta');
   var chip=document.createElement('button');chip.type='button';chip.className='vchip';chip.textContent='v'+V;chip.title='Buscar actualizaciones';
   if(top&&top.parentNode)top.parentNode.insertBefore(chip,top.nextSibling);
