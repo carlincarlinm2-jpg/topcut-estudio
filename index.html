@@ -19,6 +19,41 @@
 .install p{margin:0;flex:1}
 .install b{color:#f5b935}
 .install button{background:transparent;border:1px solid #45425a;color:#eeedf3;border-radius:8px;padding:6px 10px;font:600 12.5px Archivo,system-ui,sans-serif;cursor:pointer}
+.vchip{font:600 11px 'JetBrains Mono',ui-monospace,monospace;color:#9c99ad;background:transparent;border:1px solid #2f2d39;border-radius:5px;padding:3px 7px;cursor:pointer}
+.vchip:hover{color:#eeedf3;border-color:#45425a}
+.vchip.has{color:#1c1505;background:#f5b935;border-color:transparent;animation:vpulse 1.6s ease-in-out infinite}
+.upd{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:60;width:min(440px,calc(100% - 24px));transform:translate(-50%,140%);opacity:0;transition:transform .55s cubic-bezier(.2,1.3,.4,1),opacity .3s;background:#1d1c25;border:1px solid #45425a;border-radius:16px;padding:16px;display:flex;gap:14px;align-items:center;box-shadow:0 20px 50px rgba(0,0,0,.6),0 0 0 1px rgba(245,185,53,.15);font:500 13.5px/1.4 Archivo,system-ui,sans-serif;color:#eeedf3}
+.upd.show{transform:translate(-50%,0);opacity:1}
+.upd .ic{position:relative;width:52px;height:52px;flex:none;border-radius:14px;background:#f5b935;display:grid;place-items:center;animation:vpulse 1.8s ease-in-out infinite}
+.upd .ic svg{width:28px;height:28px;color:#1c1505;animation:vspin 2.4s linear infinite}
+.upd .tx{flex:1;min-width:0}
+.upd .tx b{display:block;font:400 19px/1.1 Anton,Impact,sans-serif;letter-spacing:.02em;text-transform:uppercase}
+.upd .tx span{color:#9c99ad;font-size:12.5px}
+.upd .bt{display:flex;flex-direction:column;gap:6px}
+.upd .go{background:#f5b935;color:#1c1505;border:0;border-radius:9px;padding:9px 14px;font:700 13px Archivo,system-ui,sans-serif;cursor:pointer}
+.upd .later{background:transparent;color:#9c99ad;border:0;font:600 12px Archivo,system-ui,sans-serif;cursor:pointer}
+.updating{position:fixed;inset:0;z-index:70;background:#111016;display:grid;place-items:center;opacity:0;transition:opacity .3s}
+.updating.show{opacity:1}
+.updating .box{display:flex;flex-direction:column;align-items:center;gap:18px;font:500 14px Archivo,system-ui,sans-serif;color:#9c99ad;text-align:center;padding:16px}
+.updating .pod{display:flex;align-items:flex-end;gap:8px;height:90px}
+.updating .pod i{display:block;width:28px;border-radius:6px 6px 0 0;animation:vrise 1s ease-in-out infinite alternate}
+.updating .pod i:nth-child(1){background:#d2d6de;height:50px;animation-delay:.15s}
+.updating .pod i:nth-child(2){background:#f5b935;height:90px}
+.updating .pod i:nth-child(3){background:#d98d52;height:36px;animation-delay:.3s}
+.updating b{font:400 26px Anton,Impact,sans-serif;letter-spacing:.02em;color:#eeedf3;text-transform:uppercase}
+.updating .bar{width:200px;height:6px;border-radius:99px;background:#22212c;overflow:hidden}
+.updating .bar i{display:block;height:100%;width:0;background:#f5b935;animation:vload 1.4s ease-out forwards}
+.done-card{position:fixed;left:50%;top:calc(16px + env(safe-area-inset-top,0px));z-index:60;width:min(420px,calc(100% - 24px));transform:translate(-50%,-140%);transition:transform .55s cubic-bezier(.2,1.3,.4,1);background:#1d1c25;border:1px solid #45425a;border-radius:16px;padding:16px 18px;box-shadow:0 20px 50px rgba(0,0,0,.6);font:500 13px/1.45 Archivo,system-ui,sans-serif;color:#eeedf3}
+.done-card.show{transform:translate(-50%,0)}
+.done-card b{display:flex;align-items:center;gap:8px;font:400 19px Anton,Impact,sans-serif;letter-spacing:.02em;text-transform:uppercase}
+.done-card b em{font-style:normal;display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#f5b935;color:#1c1505;font:700 14px Archivo,sans-serif}
+.done-card ul{margin:8px 0 10px;padding-left:18px;color:#c9c7d6}
+.done-card button{background:transparent;border:1px solid #45425a;color:#eeedf3;border-radius:8px;padding:6px 12px;font:600 12.5px Archivo,system-ui,sans-serif;cursor:pointer}
+@keyframes vpulse{0%,100%{box-shadow:0 0 0 0 rgba(245,185,53,.55)}50%{box-shadow:0 0 0 10px rgba(245,185,53,0)}}
+@keyframes vspin{to{transform:rotate(360deg)}}
+@keyframes vrise{from{transform:scaleY(.35);transform-origin:bottom}to{transform:scaleY(1);transform-origin:bottom}}
+@keyframes vload{to{width:100%}}
+@media (prefers-reduced-motion:reduce){.upd,.done-card{transition:none}.upd .ic,.upd .ic svg,.vchip.has,.updating .pod i{animation:none}.updating .bar i{animation-duration:.01s}}
 </style>
 <title>TopCut Estudio</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -1284,7 +1319,7 @@ $('#titleText').value=P.title.text;$('#script').value=P.script;
 invalidate();renderAll();
 if(document.fonts&&document.fonts.load){Promise.all([document.fonts.load('100px Anton'),document.fonts.load('600 20px Archivo')]).then(()=>dirty=true).catch(()=>{})}
 requestAnimationFrame(loop);
-window.__topcut={P,MEDIA,runExport,handleFiles,setAudio,get TOTAL(){return TOTAL}};
+window.__topcut={P,MEDIA,runExport,handleFiles,setAudio,get TOTAL(){return TOTAL},get busy(){return X.busy}};
 </script>
 
 <div class="install" id="installTip" hidden><img src="/icons/apple-touch-icon.png" alt=""><p>Instala TopCut: toca <b>Compartir</b> y luego <b>Agregar a inicio</b>.</p><button type="button" id="installX">Entendido</button></div>
@@ -1296,6 +1331,51 @@ window.__topcut={P,MEDIA,runExport,handleFiles,setAudio,get TOTAL(){return TOTAL
   try{seen=localStorage.getItem('topcut-install-tip')==='1'}catch(e){}
   if(ios&&!standalone&&!seen){var t=document.getElementById('installTip');setTimeout(function(){t.hidden=false},2500);
     document.getElementById('installX').onclick=function(){t.hidden=true;try{localStorage.setItem('topcut-install-tip','1')}catch(e){}}}
+})();
+</script>
+<div class="upd" id="upd" role="dialog" aria-live="polite" aria-label="Actualización disponible">
+  <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M20 12a8 8 0 0 1-14.3 4.9M4 12A8 8 0 0 1 18.3 7.1"/><path d="M18.5 3v4.3h-4.3M5.5 21v-4.3h4.3"/></svg></div>
+  <div class="tx"><b>Nueva versión</b><span id="updTxt">Hay mejoras listas para TopCut.</span></div>
+  <div class="bt"><button class="go" id="updGo" type="button">Actualizar</button><button class="later" id="updLater" type="button">Después</button></div>
+</div>
+<div class="updating" id="updating" hidden><div class="box"><div class="pod"><i></i><i></i><i></i></div><b>Actualizando TopCut</b><div class="bar"><i></i></div><span>Tus clips no se pierden del dispositivo; solo se recarga la app.</span></div></div>
+<div class="done-card" id="doneCard" hidden><b><em>✓</em> Actualizada a la <span id="doneV"></span></b><ul id="doneNotes"></ul><button type="button" id="doneOk">Perfecto</button></div>
+<script>
+(function(){
+  var V='1.3.0',remote=null,dismissedFor=null;
+  var top=document.querySelector('.top .meta');
+  var chip=document.createElement('button');chip.type='button';chip.className='vchip';chip.textContent='v'+V;chip.title='Buscar actualizaciones';
+  if(top&&top.parentNode)top.parentNode.insertBefore(chip,top.nextSibling);
+  function newer(a,b){a=a.split('.').map(Number);b=b.split('.').map(Number);for(var i=0;i<3;i++){if((a[i]||0)!==(b[i]||0))return (a[i]||0)>(b[i]||0)}return false}
+  function show(){var u=document.getElementById('upd');document.getElementById('updTxt').textContent='La versión '+remote.version+' está lista'+(remote.notes&&remote.notes[0]?': '+remote.notes[0].toLowerCase()+'.':'.');
+    chip.classList.add('has');chip.textContent='Actualizar a v'+remote.version;u.hidden=false;requestAnimationFrame(function(){requestAnimationFrame(function(){u.classList.add('show')})})}
+  function hide(){var u=document.getElementById('upd');u.classList.remove('show')}
+  function check(manual){
+    return fetch('/version.json?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.json():null}).then(function(j){
+      if(!j||!j.version)return; if(newer(j.version,V)){remote=j;if(manual||dismissedFor!==j.version)show()}
+      else if(manual&&typeof toast==='function')toast('Ya tienes la versión más nueva (v'+V+').');
+    }).catch(function(){if(manual&&typeof toast==='function')toast('No se pudo revisar: parece que no hay internet.')})}
+  function apply(){
+    if(window.__topcut&&window.__topcut.busy){if(typeof toast==='function')toast('Espera a que termine la exportación.');return}
+    hide();var o=document.getElementById('updating');o.hidden=false;requestAnimationFrame(function(){o.classList.add('show')});
+    try{localStorage.setItem('topcut-updated',remote?remote.version:'')}catch(e){}
+    var jobs=[];
+    if('caches' in window)jobs.push(caches.keys().then(function(ks){return Promise.all(ks.map(function(k){return caches.delete(k)}))}).catch(function(){}));
+    if(navigator.serviceWorker&&navigator.serviceWorker.getRegistrations)jobs.push(navigator.serviceWorker.getRegistrations().then(function(rs){return Promise.all(rs.map(function(r){return r.update().catch(function(){})}))}).catch(function(){}));
+    Promise.all(jobs).then(function(){setTimeout(function(){location.reload()},1300)});
+  }
+  chip.onclick=function(){if(remote&&newer(remote.version,V))show();else check(true)};
+  document.getElementById('updGo').onclick=apply;
+  document.getElementById('updLater').onclick=function(){dismissedFor=remote&&remote.version;hide()};
+  // after an update: celebrate
+  try{var u=localStorage.getItem('topcut-updated');if(u){localStorage.removeItem('topcut-updated');
+    fetch('/version.json?t='+Date.now(),{cache:'no-store'}).then(function(r){return r.json()}).then(function(j){
+      document.getElementById('doneV').textContent='v'+V;var ul=document.getElementById('doneNotes');(j.version===V?j.notes||[]:[]).forEach(function(n){var li=document.createElement('li');li.textContent=n;ul.appendChild(li)});
+      var c=document.getElementById('doneCard');c.hidden=false;requestAnimationFrame(function(){requestAnimationFrame(function(){c.classList.add('show')})});
+      document.getElementById('doneOk').onclick=function(){c.classList.remove('show');setTimeout(function(){c.hidden=true},600)};setTimeout(function(){c.classList.remove('show')},9000)}).catch(function(){})}}catch(e){}
+  setTimeout(check,2500);
+  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')check()});
+  setInterval(check,10*60*1000);
 })();
 </script>
 </body>
