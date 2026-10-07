@@ -645,6 +645,7 @@ input[type=color]{width:44px;height:32px;border:1px solid var(--line);border-rad
       <div class="prog"><i id="mBar"></i></div>
       <div class="spread mono"><span id="mPct">0%</span><span id="mSpeed"></span></div>
       <p class="hint">Deja esta pestaña abierta y visible hasta que termine.</p>
+      <p class="note" id="mBgNote" hidden>La app está en segundo plano y el sistema la frena. Vuelve a esta ventana para que termine rápido.</p>
       <div class="row"><button class="btn" id="mCancel" type="button">Cancelar</button></div>
     </div>
     <div id="mDone" class="sec" hidden>
@@ -2211,6 +2212,7 @@ async function runExport(){
 }
 function slug(s){return (s||'').normalize('NFD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60)||'ranking'}
 $('#exportBtn').onclick=runExport;
+document.addEventListener('visibilitychange',()=>{if(!X.busy)return;const n=$('#mBgNote');if(n)n.hidden=document.visibilityState==='visible'});
 $('#mCancel').onclick=()=>{X.cancel=true;if(X.onCancel){const f=X.onCancel;X.onCancel=null;f()}};
 $('#mClose').onclick=()=>modalView(null);
 $('#mShare').onclick=async()=>{if(!LAST||!LAST.file)return;try{await navigator.share({files:[LAST.file],title:P.title.text||'Mi ranking'});$('#mSaveMsg').textContent='Listo. Elige “Guardar video” para mandarlo a Fotos.'}catch(e){if(e&&e.name!=='AbortError')$('#mSaveMsg').textContent='No se pudo abrir el menú de compartir; usa Descargar.'}};$('#mErrClose').onclick=()=>modalView(null);
@@ -2251,7 +2253,7 @@ window.__topcut={drawAt:t=>{const a=performance.now();drawAt(t);return performan
 <div class="done-card" id="doneCard" hidden><b><em>✓</em> Actualizada a la versión <span id="doneV"></span></b><ul id="doneNotes"></ul><button type="button" id="doneOk">Perfecto</button></div>
 <script>
 (function(){
-  var V='1.8.1',remote=null,dismissedFor=null;
+  var V='1.8.2',remote=null,dismissedFor=null;
   var top=document.querySelector('.top .meta');
   var chip=document.createElement('button');chip.type='button';chip.className='vchip';chip.textContent='v'+V;chip.title='Buscar actualizaciones';
   if(top&&top.parentNode)top.parentNode.insertBefore(chip,top.nextSibling);
