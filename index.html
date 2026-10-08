@@ -370,13 +370,6 @@ input[type=color]{width:44px;height:32px;border:1px solid var(--line);border-rad
 
       <div class="pbody" data-lpane="rank" hidden>
         <div class="sec">
-          <h3>Título del video <label class="sw"><input type="checkbox" id="rkTitleOn" checked> Visible</label></h3>
-          <input type="text" id="rkTitle" maxlength="90" placeholder="Ej. TOP 5 LUGARES MÁS RAROS DEL PLANETA" aria-label="Título del video">
-          <div class="seg" id="rkTStyle"><button type="button" data-v="caja">Caja blanca</button><button type="button" data-v="amarilla">Caja amarilla</button><button type="button" data-v="contorno">Contorno</button></div>
-          <label class="check" id="alwaysF"><input type="checkbox" id="titleAlways"> Dejar el título todo el video</label>
-          <p class="hint">También puedes tocar el título en la vista previa para editarlo (doble clic en computadora).</p>
-        </div>
-        <div class="sec">
           <h3>Tipo de video</h3>
           <div class="kinds" id="kindSeg" role="group" aria-label="Tipo de video">
             <button type="button" data-v="ranking"><b>Ranking</b><span>Top con números, lista de puestos y cuenta regresiva</span></button>
@@ -385,6 +378,13 @@ input[type=color]{width:44px;height:32px;border:1px solid var(--line);border-rad
           </div>
           <input type="checkbox" id="rankOn" checked hidden>
           <p class="hint" id="rankHint">Puedes cambiar de tipo cuando quieras; tus clips y textos se conservan.</p>
+        </div>
+        <div class="sec">
+          <h3>Título del video <label class="sw"><input type="checkbox" id="rkTitleOn" checked> Visible</label></h3>
+          <input type="text" id="rkTitle" maxlength="90" placeholder="Ej. TOP 5 LUGARES MÁS RAROS DEL PLANETA" aria-label="Título del video">
+          <div class="seg" id="rkTStyle"><button type="button" data-v="caja">Caja blanca</button><button type="button" data-v="amarilla">Caja amarilla</button><button type="button" data-v="contorno">Contorno</button></div>
+          <label class="check" id="alwaysF"><input type="checkbox" id="titleAlways"> Dejar el título todo el video</label>
+          <p class="hint">También puedes tocar el título en la vista previa para editarlo (doble clic en computadora).</p>
         </div>
         <div class="sec" id="rankOpts">
           <div class="field"><span class="lab">Orden</span>
@@ -1525,7 +1525,7 @@ async function saveProject(force){
     todo.forEach(m=>PROJ.saved.add(m.key));
     const stale=[...PROJ.saved].filter(k=>!keys.has(k));if(stale.length){await idbTx('blobs','readwrite',st=>{stale.forEach(k=>st.delete(PROJ.id+':'+k))});stale.forEach(k=>PROJ.saved.delete(k))}
     const mediaMap={};media.forEach(m=>mediaMap[m.id]=m.key);
-    const rec={id:PROJ.id,name:PROJ.name||defaultProjName(),updated:Date.now(),thumb:projThumb(),clips:P.items.length,dur:TOTAL,uidMax:uid,state:JSON.parse(JSON.stringify(P)),mediaMap};
+    const sig=JSON.stringify(P);PROJ.sig=sig;const rec={id:PROJ.id,name:PROJ.name||defaultProjName(),updated:Date.now(),thumb:projThumb(),clips:P.items.length,dur:TOTAL,uidMax:uid,state:JSON.parse(sig),mediaMap};
     await idbTx('projects','readwrite',st=>{st.put(rec)});
     try{localStorage.setItem('topcut-last',PROJ.id)}catch(e){}
     setSaveState('saved');
@@ -1600,7 +1600,7 @@ $('#projName').oninput=e=>{PROJ.name=e.target.value;if(!P.demo){ensureProject()}
 $('.app').addEventListener('input',markChange,true);$('.app').addEventListener('change',markChange,true);
 $('#saveState').onclick=async()=>{if(P.demo){toast('El ejemplo no se guarda. Sube tus clips o toca Proyectos → Nuevo proyecto.');return}if(!PROJ.id&&hasContent())ensureProject();await saveProject(true);if(PROJ.lastSaved)toast('Guardado en este dispositivo.')};
 window.addEventListener('beforeunload',e=>{if(!P.demo&&(PROJ.dirty||PROJ.saving)){saveProject(true);e.preventDefault();e.returnValue=''}});
-setInterval(()=>saveProject(),4000);
+setInterval(()=>{try{if(PROJ.id&&!P.demo&&!X.busy&&!PROJ.dirty&&!PROJ.saving&&PROJ.sig&&JSON.stringify(P)!==PROJ.sig)PROJ.dirty=true}catch(e){}saveProject()},4000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')saveProject()});
 window.addEventListener('pagehide',()=>{saveProject()});
 
@@ -2302,10 +2302,10 @@ function exportRealtime(audio,onProg){return new Promise(async(res,rej)=>{
   if(!window.MediaRecorder||!cv.captureStream){rej(new Error('Este navegador no puede exportar video. Usa Chrome, Edge o Safari actualizados.'));return}
   const mime=['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4','video/webm;codecs=vp9,opus','video/webm'].find(m=>MediaRecorder.isTypeSupported(m))||'';
   const stream=cv.captureStream(FPS);let ac=null,node=null;
-  if(audio){ac=new AudioContext();const dest=ac.createMediaStreamDestination();node=ac.createBufferSource();node.buffer=audio;node.connect(dest);dest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));await ac.resume()}
+  let ownAc=false;if(audio){ac=(PAC&&PAC.state!=='closed')?PAC:null;if(!ac){ac=new (window.AudioContext||window.webkitAudioContext)();ownAc=true}const dest=ac.createMediaStreamDestination();node=ac.createBufferSource();node.buffer=audio;node.connect(dest);dest.stream.getAudioTracks().forEach(t=>stream.addTrack(t));try{await ac.resume()}catch(e){}}
   let rec;try{rec=new MediaRecorder(stream,mime?{mimeType:mime,videoBitsPerSecond:10e6}:undefined)}catch(e){rec=new MediaRecorder(stream)}
   const chunks=[];rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
-  rec.onstop=()=>{stream.getTracks().forEach(t=>t.stop());ac&&ac.close();E.silent=false;X.onTick=null;if(X.cancel){rej('cancel');return}const type=rec.mimeType||mime||'video/webm';res({blob:new Blob(chunks,{type}),ext:type.includes('mp4')?'mp4':'webm'})};
+  rec.onstop=()=>{stream.getTracks().forEach(t=>t.stop());try{node&&node.disconnect()}catch(e){}if(ac&&ownAc)ac.close();E.silent=false;X.onTick=null;if(X.cancel){rej('cancel');return}const type=rec.mimeType||mime||'video/webm';res({blob:new Blob(chunks,{type}),ext:type.includes('mp4')?'mp4':'webm'})};
   E.silent=true;pause();E.t=0;E.cur=-1;const f=TL[0],fm=MEDIA.get(f.it.media);if(fm.kind==='video')await seekTo(fm.el,f.it.in);
   E.onEnd=()=>rec.state!=='inactive'&&rec.stop();X.onCancel=()=>{pause();E.onEnd=null;rec.state!=='inactive'&&rec.stop()};X.onTick=()=>onProg(E.t/TOTAL);
   rec.start(500);node&&node.start();play();
@@ -2325,17 +2325,20 @@ async function audioLag(recBuf,orig,est){
 }
 async function recordAudioTrack(audio,onP){
   const mime=recAudioMime();if(!mime)throw new Error('norec');if(!await loadMp4box())throw new Error('nomp4box');
-  const AC=window.AudioContext||window.webkitAudioContext;let ac;try{ac=new AC({sampleRate:48000})}catch(e){ac=new AC()}
+  const AC=window.AudioContext||window.webkitAudioContext;let ac=(typeof PAC!=='undefined'&&PAC&&PAC.state!=='closed')?PAC:null,own=false;
+  if(!ac){try{ac=new AC({sampleRate:48000})}catch(e){ac=new AC()}own=true}
   try{await ac.resume()}catch(e){}
+  for(let i=0;i<20&&ac.state!=='running';i++){await sleep(100);try{await ac.resume()}catch(e){}}
+  if(ac.state!=='running'){if(own)try{ac.close()}catch(e){}throw new Error('audio-suspended')}
   const dest=ac.createMediaStreamDestination(),src=ac.createBufferSource();src.buffer=audio;src.connect(dest);
   let rec;try{rec=new MediaRecorder(dest.stream,{mimeType:mime,audioBitsPerSecond:192000})}catch(e){rec=new MediaRecorder(dest.stream,{mimeType:mime})}
   const chunks=[];rec.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
   const startedP=new Promise(r=>{rec.onstart=r;setTimeout(r,1500)});rec.start(1000);await startedP;
   const acAtStart=ac.currentTime,t0=acAtStart+.2;src.start(t0);
-  const ended=new Promise(r=>{src.onended=r;X.recCancel=()=>{try{src.stop()}catch(e){}r()}});
+  const ended=new Promise(r=>{src.onended=r;X.recCancel=()=>{try{src.stop()}catch(e){}r()};setTimeout(r,(audio.duration+6)*1000)});
   const tick=setInterval(()=>{onP&&onP(clamp((ac.currentTime-t0)/audio.duration,0,1))},250);
   await ended;clearInterval(tick);X.recCancel=null;if(!X.cancel)await sleep(400);
-  const stopped=new Promise(r=>{rec.onstop=r;setTimeout(r,3000)});try{rec.stop()}catch(e){}await stopped;try{ac.close()}catch(e){}
+  const stopped=new Promise(r=>{rec.onstop=r;setTimeout(r,3000)});try{rec.stop()}catch(e){}await stopped;try{src.disconnect()}catch(e){}if(own)try{ac.close()}catch(e){}
   if(X.cancel)throw 'cancel';
   const blob=new Blob(chunks,{type:mime}),buf=await blob.arrayBuffer();
   const mf=MP4Box.createFile();let info=null;const S=[];mf.onReady=i=>{info=i;const tr=i.audioTracks&&i.audioTracks[0];if(tr){mf.setExtractionOptions(tr.id,null,{nbSamples:1e9});mf.start()}};mf.onSamples=(id,u,ss)=>{for(const x of ss)S.push(x)};
@@ -2354,7 +2357,7 @@ async function runExport(){
   if(X.busy)return;
   if(X.busy||!TL.length)return;
   const notReady=P.items.map(i=>MEDIA.get(i.media)).filter(m=>!m||!m.ready);if(notReady.length){toast('Espera a que terminen de cargar los clips.');return}
-  pause();await loadCapFont();FPS=P.canvas.fps===60?60:30;X.busy=true;sizeOff();X.cancel=false;X.err=null;modalView('work');
+  pause();try{ensurePAC()}catch(e){}await loadCapFont();FPS=P.canvas.fps===60?60:30;X.busy=true;sizeOff();X.cancel=false;X.err=null;modalView('work');
   const bar=$('#mBar'),pct=$('#mPct'),ph=$('#mPhase'),spd=$('#mSpeed');bar.style.width='0%';pct.textContent='0%';spd.textContent='';ph.textContent='Mezclando el audio…';
   const t0=performance.now();let blob,ext='mp4',how='';
   const onProg=p=>{bar.style.width=(p*100).toFixed(1)+'%';pct.textContent=Math.round(p*100)+'%';const el=(performance.now()-t0)/1000;if(el>1&&p>0)spd.textContent=(TOTAL*p/el).toFixed(1)+'× tiempo real'};
@@ -2427,7 +2430,7 @@ window.__topcut={forceRecAudio:v=>{X.forceRecAudio=v},get lastLag(){return X.rec
 <div class="done-card" id="doneCard" hidden><b><em>✓</em> Actualizada a la versión <span id="doneV"></span></b><ul id="doneNotes"></ul><button type="button" id="doneOk">Perfecto</button></div>
 <script>
 (function(){
-  var V='1.9.0',remote=null,dismissedFor=null;
+  var V='1.9.1',remote=null,dismissedFor=null;
   var top=document.querySelector('.top .meta');
   var chip=document.createElement('button');chip.type='button';chip.className='vchip';chip.textContent='v'+V;chip.title='Buscar actualizaciones';
   if(top&&top.parentNode)top.parentNode.insertBefore(chip,top.nextSibling);
